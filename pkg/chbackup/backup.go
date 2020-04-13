@@ -288,6 +288,10 @@ func ListLocalBackups(config Config) ([]Backup, error) {
 
 // PrintRemoteBackups - print all backups stored on remote storage
 func PrintRemoteBackups(config Config, format string) error {
+	if config.General.RemoteStorage == "none" {
+		fmt.Println("PrintRemoteBackups aborted: RemoteStorage set to \"none\"")
+		return nil
+	}
 	bd, err := NewBackupDestination(config)
 	if err != nil {
 		return err
@@ -305,7 +309,7 @@ func PrintRemoteBackups(config Config, format string) error {
 }
 
 // Freeze - freeze tables by tablePattern
-func Freeze(config Config, tablePattern string) error {
+func Freeze(config Config, tablePattern string, useOldWay bool) error {
 	ch := &ClickHouse{
 		Config: &config.ClickHouse,
 	}
@@ -342,7 +346,7 @@ func Freeze(config Config, tablePattern string) error {
 			log.Printf("Skip `%s`.`%s`", table.Database, table.Name)
 			continue
 		}
-		if err := ch.FreezeTable(table); err != nil {
+		if err := ch.FreezeTable(table, useOldWay); err != nil {
 			return err
 		}
 	}
@@ -356,7 +360,7 @@ func NewBackupName() string {
 
 // CreateBackup - create new backup of all tables matched by tablePattern
 // If backupName is empty string will use default backup name
-func CreateBackup(config Config, backupName, tablePattern string) error {
+func CreateBackup(config Config, backupName, tablePattern string, useOldWay bool) error {
 	if backupName == "" {
 		backupName = NewBackupName()
 	}
@@ -372,7 +376,7 @@ func CreateBackup(config Config, backupName, tablePattern string) error {
 		return fmt.Errorf("can't create backup with %v", err)
 	}
 	log.Printf("Create backup '%s'", backupName)
-	if err := Freeze(config, tablePattern); err != nil {
+	if err := Freeze(config, tablePattern, useOldWay); err != nil {
 		return err
 	}
 	log.Println("Copy metadata")
@@ -523,6 +527,10 @@ func GetLocalBackup(config Config, backupName string) error {
 }
 
 func Upload(config Config, backupName string, diffFrom string) error {
+	if config.General.RemoteStorage == "none" {
+		fmt.Println("Upload aborted: RemoteStorage set to \"none\"")
+		return nil
+	}
 	if backupName == "" {
 		fmt.Println("Select backup for upload:")
 		PrintLocalBackups(config, "all")
@@ -563,6 +571,10 @@ func Upload(config Config, backupName string, diffFrom string) error {
 }
 
 func Download(config Config, backupName string) error {
+	if config.General.RemoteStorage == "none" {
+		fmt.Println("Download aborted: RemoteStorage set to \"none\"")
+		return nil
+	}
 	if backupName == "" {
 		fmt.Println("Select backup for download:")
 		PrintRemoteBackups(config, "all")
@@ -646,6 +658,10 @@ func RemoveBackupLocal(config Config, backupName string) error {
 }
 
 func RemoveBackupRemote(config Config, backupName string) error {
+	if config.General.RemoteStorage == "none" {
+		fmt.Println("RemoveBackupRemote aborted: RemoteStorage set to \"none\"")
+		return nil
+	}
 	dataPath := getDataPath(config)
 	if dataPath == "" {
 		return ErrUnknownClickhouseDataPath

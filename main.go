@@ -5,7 +5,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/AlexAkulov/clickhouse-backup/pkg/chbackup"
+	"github.com/Altinity/clickhouse-backup/pkg/chbackup"
 
 	"github.com/urfave/cli"
 )
@@ -61,14 +61,18 @@ func main() {
 		{
 			Name:        "create",
 			Usage:       "Create new backup",
-			UsageText:   "clickhouse-backup create [-t, --tables=<db>.<table>] <backup_name>",
+			UsageText:   "clickhouse-backup create [-t, --tables=<db>.<table>] [-f, --freeze-one-by-one] <backup_name>",
 			Description: "Create new backup",
 			Action: func(c *cli.Context) error {
-				return chbackup.CreateBackup(*getConfig(c), c.Args().First(), c.String("t"))
+				return chbackup.CreateBackup(*getConfig(c), c.Args().First(), c.String("t"), c.Bool("f"))
 			},
 			Flags: append(cliapp.Flags,
 				cli.StringFlag{
 					Name:   "table, tables, t",
+					Hidden: false,
+				},
+				cli.BoolFlag{
+					Name:   "freeze-one-by-one, f",
 					Hidden: false,
 				},
 			),
@@ -103,9 +107,11 @@ func main() {
 					if err := chbackup.PrintLocalBackups(*config, c.Args().Get(1)); err != nil {
 						return err
 					}
-					fmt.Println("Remote backups:")
-					if err := chbackup.PrintRemoteBackups(*config, c.Args().Get(1)); err != nil {
-						return err
+					if config.General.RemoteStorage != "none" {
+						fmt.Println("Remote backups:")
+						if err := chbackup.PrintRemoteBackups(*config, c.Args().Get(1)); err != nil {
+							return err
+						}
 					}
 				default:
 					fmt.Fprintf(os.Stderr, "Unknown command '%s'\n", c.Args().Get(0))
@@ -182,14 +188,18 @@ func main() {
 		{
 			Name:        "freeze",
 			Usage:       "Freeze tables",
-			UsageText:   "clickhouse-backup freeze [-t, --tables=<db>.<table>] <backup_name>",
+			UsageText:   "clickhouse-backup freeze [-t, --tables=<db>.<table>] [-f, --freeze-one-by-one] <backup_name>",
 			Description: "Freeze tables",
 			Action: func(c *cli.Context) error {
-				return chbackup.Freeze(*getConfig(c), c.String("t"))
+				return chbackup.Freeze(*getConfig(c), c.String("t"), c.Bool("f"))
 			},
 			Flags: append(cliapp.Flags,
 				cli.StringFlag{
 					Name:   "table, tables, t",
+					Hidden: false,
+				},
+				cli.BoolFlag{
+					Name:   "freeze-one-by-one, f",
 					Hidden: false,
 				},
 			),
