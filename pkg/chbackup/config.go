@@ -53,6 +53,7 @@ type S3Config struct {
 	CompressionFormat       string `yaml:"compression_format" envconfig:"S3_COMPRESSION_FORMAT"`
 	SSE                     string `yaml:"sse" envconfig:"S3_SSE"`
 	DisableCertVerification bool   `yaml:"disable_cert_verification" envconfig:"S3_DISABLE_CERT_VERIFICATION"`
+	PathHostnameInclude     bool   `yaml:"path_hostname_include" envconfig:"S3_PATH_HOSTNAME_INCLUDE"`
 }
 
 // COSConfig - cos settings section
@@ -156,7 +157,7 @@ func DefaultConfig() *Config {
 			Path:              "",
 			CompressionFormat: "gzip",
 			CompressionLevel:  1,
-			Debug: false,
+			Debug:             false,
 		},
 	}
 }
