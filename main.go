@@ -212,6 +212,14 @@ func main() {
 			},
 			Flags: cliapp.Flags,
 		},
+		{
+			Name:  "server",
+			Usage: "Run API server",
+			Action: func(c *cli.Context) error {
+				return chbackup.Server(*getConfig(c))
+			},
+			Flags: cliapp.Flags,
+		},
 	}
 	if err := cliapp.Run(os.Args); err != nil {
 		log.Fatal(err)

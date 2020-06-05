@@ -17,6 +17,7 @@ type Config struct {
 	S3         S3Config         `yaml:"s3"`
 	GCS        GCSConfig        `yaml:"gcs"`
 	COS        COSConfig        `yaml:"cos"`
+	API        APIConfig        `yaml:"api"`
 }
 
 // GeneralConfig - general setting section
@@ -77,6 +78,10 @@ type ClickHouseConfig struct {
 	DataPath   string   `yaml:"data_path" envconfig:"CLICKHOUSE_DATA_PATH"`
 	SkipTables []string `yaml:"skip_tables" envconfig:"CLICKHOUSE_SKIP_TABLES"`
 	Timeout    string   `yaml:"timeout" envconfig:"CLICKHOUSE_TIMEOUT"`
+}
+
+type APIConfig struct {
+	ListenAddr string `yaml:"listen_addr" envconfig:"API_LISTEN_ADDR"`
 }
 
 // LoadConfig - load config from file
@@ -158,6 +163,9 @@ func DefaultConfig() *Config {
 			CompressionFormat: "gzip",
 			CompressionLevel:  1,
 			Debug:             false,
+		},
+		API: APIConfig{
+			ListenAddr: "localhost:7171",
 		},
 	}
 }

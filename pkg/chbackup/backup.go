@@ -143,20 +143,29 @@ func parseSchemaPattern(metadataPath string, tablePattern string) (RestoreTables
 	return result, nil
 }
 
-// PrintTables - print all tables suitable for backup
-func PrintTables(config Config) error {
+// getTables - get all tables for use by PrintTables and API
+func getTables(config Config) ([]Table, error) {
 	ch := &ClickHouse{
 		Config: &config.ClickHouse,
 	}
 
 	if err := ch.Connect(); err != nil {
-		return fmt.Errorf("can't connect to clickouse with: %v", err)
+		return []Table{}, fmt.Errorf("can't connect to clickouse with: %v", err)
 	}
 	defer ch.Close()
 
 	allTables, err := ch.GetTables()
 	if err != nil {
-		return fmt.Errorf("can't get tables with: %v", err)
+		return []Table{}, fmt.Errorf("can't get tables with: %v", err)
+	}
+	return allTables, nil
+}
+
+// PrintTables - print all tables suitable for backup
+func PrintTables(config Config) error {
+	allTables, err := getTables(config)
+	if err != nil {
+		return err
 	}
 	for _, table := range allTables {
 		if table.Skip {
