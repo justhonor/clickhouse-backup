@@ -47,5 +47,4 @@ Freeze tables: `curl -s localhost:7171/backup/freeze -X POST | jq .`
 Remove data in 'shadow' folder: `curl -s localhost:7171/backup/clean -X POST | jq .`
 
 # TODOS:
-* diff-from (?)
 * prometheus metrics
