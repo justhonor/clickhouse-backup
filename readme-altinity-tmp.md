@@ -17,6 +17,7 @@ Create new backup: `curl -s localhost:7171/backup/create -X POST | jq .`
 > **POST /backup/upload**
 
 Upload backup to remote storage: `curl -s localhost:7171/backup/upload/<BACKUP_NAME> -X POST | jq .`
+* Optional query argument `diff-from` works the same as the `--diff-from` CLI argument.
 
 > **GET /backup/list**
 

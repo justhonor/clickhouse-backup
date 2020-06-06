@@ -201,7 +201,11 @@ func httpCleanHandler(w http.ResponseWriter, r *http.Request, c Config) {
 
 func httpUploadHandler(w http.ResponseWriter, r *http.Request, c Config) {
 	vars := mux.Vars(r)
-	diffFrom := "" // TODO!
+	diffFrom := ""
+	query := r.URL.Query()
+	if df, exist := query["diff-from"]; exist {
+		diffFrom = df[0]
+	}
 	if err := Upload(c, vars["name"], diffFrom); err != nil {
 		log.Printf("Upload error: %+v\n", err)
 		w.WriteHeader(http.StatusInternalServerError)
