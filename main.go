@@ -64,7 +64,8 @@ func main() {
 			UsageText:   "clickhouse-backup create [-t, --tables=<db>.<table>] [-f, --freeze-one-by-one] <backup_name>",
 			Description: "Create new backup",
 			Action: func(c *cli.Context) error {
-				return chbackup.CreateBackup(*getConfig(c), c.Args().First(), c.String("t"), c.Bool("f"))
+				_, err := chbackup.CreateBackup(*getConfig(c), c.Args().First(), c.String("t"), c.Bool("f"))
+				return err
 			},
 			Flags: append(cliapp.Flags,
 				cli.StringFlag{
@@ -209,6 +210,14 @@ func main() {
 			Usage: "Remove data in 'shadow' folder",
 			Action: func(c *cli.Context) error {
 				return chbackup.Clean(*getConfig(c))
+			},
+			Flags: cliapp.Flags,
+		},
+		{
+			Name:  "server",
+			Usage: "Run API server",
+			Action: func(c *cli.Context) error {
+				return chbackup.Server(*getConfig(c))
 			},
 			Flags: cliapp.Flags,
 		},

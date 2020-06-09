@@ -2,8 +2,11 @@ package chbackup
 
 import (
 	"crypto/tls"
+	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -86,6 +89,12 @@ func (s *S3) PutFile(key string, r io.ReadCloser) error {
 	if s.Config.SSE != "" {
 		sse = aws.String(s.Config.SSE)
 	}
+	if s.Config.PathHostnameInclude != false {
+		if hostname, err := os.Hostname(); err == nil {
+			key = fmt.Sprintf("%s/%s_%s", path.Dir(key), hostname, path.Base(key))
+		}
+	}
+
 	_, err := uploader.Upload(&s3manager.UploadInput{
 		ACL:                  aws.String(s.Config.ACL),
 		Bucket:               aws.String(s.Config.Bucket),
