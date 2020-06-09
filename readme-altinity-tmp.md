@@ -46,5 +46,21 @@ Freeze tables: `curl -s localhost:7171/backup/freeze -X POST | jq .`
 
 Remove data in 'shadow' folder: `curl -s localhost:7171/backup/clean -X POST | jq .`
 
+## API Configuration
+
+> **GET /backup/config**
+
+Get the current running configuration: `curl -s localhost:7171/backup/config | jq -r .Result > current_config.yml`
+
+> **GET /backup/config/default**
+
+Get the default configuration: `curl -s localhost:7171/backup/config/default | jq -r .Result > default_config.yml`
+
+> **POST /backup/config**
+
+Update the current running configuration: `curl -v localhost:7171/backup/config -X POST --data-binary '@new_config.yml'`
+
+Be sure to check return code for parsing/validation errors.
+
 # TODOS:
 * prometheus metrics

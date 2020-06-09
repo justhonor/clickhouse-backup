@@ -4,17 +4,21 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
 
 	"github.com/gorilla/mux"
 	"golang.org/x/sync/semaphore"
+	yaml "gopkg.in/yaml.v2"
 )
 
 type APIServer struct {
-	config Config
-	lock   *semaphore.Weighted
+	config  Config
+	lock    *semaphore.Weighted
+	server  *http.Server
+	restart chan bool
 }
 
 type APIResult struct {
@@ -33,7 +37,23 @@ var (
 
 // Server - expose CLI commands as REST API
 func Server(config Config) error {
-	api := APIServer{config: config, lock: semaphore.NewWeighted(1)}
+	api := APIServer{config: config, lock: semaphore.NewWeighted(1), restart: make(chan bool)}
+	for {
+		api.server = api.setupAPIServer(api.config)
+		go func() {
+			log.Printf("Starting API server on %s", api.config.API.ListenAddr)
+			if err := api.server.ListenAndServe(); err != http.ErrServerClosed {
+				log.Printf("Error starting API server: %v", err)
+				os.Exit(1)
+			}
+		}()
+		_ = <-api.restart
+		api.server.Close()
+		log.Printf("Reloading config and restarting API server.")
+	}
+	return nil
+}
+func (api *APIServer) setupAPIServer(config Config) *http.Server {
 	r := mux.NewRouter()
 	r.HandleFunc("/", httpRootHandler).Methods("GET")
 
@@ -64,18 +84,90 @@ func Server(config Config) error {
 	r.HandleFunc("/backup/delete/{where}/{name}", func(w http.ResponseWriter, r *http.Request) {
 		api.httpDeleteHandler(w, r, config)
 	}).Methods("POST")
+	r.HandleFunc("/backup/config/default", func(w http.ResponseWriter, r *http.Request) {
+		httpConfigDefaultHandler(w, r, config)
+	}).Methods("GET")
+	r.HandleFunc("/backup/config", func(w http.ResponseWriter, r *http.Request) {
+		httpConfigHandler(w, r, config)
+	}).Methods("GET")
+	r.HandleFunc("/backup/config", func(w http.ResponseWriter, r *http.Request) {
+		api.httpConfigUpdateHandler(w, r, config)
+	}).Methods("POST")
 
 	srv := &http.Server{
 		Addr:    config.API.ListenAddr,
 		Handler: r,
 	}
-	log.Printf("Running API server on %s", config.API.ListenAddr)
-	return srv.ListenAndServe()
+	return srv
 }
 
 // show API index
 func httpRootHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintln(w, rootHtml)
+}
+
+func httpConfigDefaultHandler(w http.ResponseWriter, r *http.Request, c Config) {
+	defaultConfig := DefaultConfig()
+	d, _ := yaml.Marshal(&defaultConfig)
+	out, err := json.Marshal(APIResult{Success: true, Result: string(d)})
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		out, _ := json.Marshal(APIResult{Success: false, Result: err.Error()})
+		fmt.Fprintf(w, string(out))
+		return
+	}
+	fmt.Fprintln(w, string(out))
+}
+
+func httpConfigHandler(w http.ResponseWriter, r *http.Request, c Config) {
+	cfg, _ := yaml.Marshal(&c)
+	out, err := json.Marshal(APIResult{Success: true, Result: string(cfg)})
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		out, _ := json.Marshal(APIResult{Success: false, Result: err.Error()})
+		fmt.Fprintf(w, string(out))
+		return
+	}
+	fmt.Fprintln(w, string(out))
+}
+
+func (api *APIServer) httpConfigUpdateHandler(w http.ResponseWriter, r *http.Request, c Config) {
+	if locked := api.lock.TryAcquire(1); !locked {
+		log.Println(ErrAPILocked)
+		w.WriteHeader(http.StatusServiceUnavailable)
+		out, _ := json.Marshal(APIResult{Success: false, Result: ErrAPILocked})
+		fmt.Fprintf(w, string(out))
+		return
+	}
+	defer api.lock.Release(1)
+
+	defer r.Body.Close()
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		out, _ := json.Marshal(APIResult{Success: false, Result: fmt.Sprintf("Error parsing POST form: %v", err.Error())})
+		fmt.Fprintf(w, string(out))
+		return
+	}
+
+	newConfig := DefaultConfig()
+	if err := yaml.Unmarshal(body, &newConfig); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		out, _ := json.Marshal(APIResult{Success: false, Result: fmt.Sprintf("Error parsing new config: %v", err.Error())})
+		fmt.Fprintf(w, string(out))
+		return
+	}
+
+	if err := validateConfig(newConfig); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		out, _ := json.Marshal(APIResult{Success: false, Result: fmt.Sprintf("Error validating new config: %v", err.Error())})
+		fmt.Fprintf(w, string(out))
+		return
+	}
+	log.Printf("Applying new valid config.")
+	api.config = *newConfig
+	api.restart <- true
+	return
 }
 
 // list of tables
