@@ -74,6 +74,7 @@ COMMANDS:
      default-config  Print default config
      freeze          Freeze tables
      clean           Remove data in 'shadow' folder
+     server          Run API server
      help, h         Shows a list of commands or help for one command
 
 GLOBAL OPTIONS:
@@ -120,6 +121,7 @@ s3:
   # empty (default), AES256, or aws:kms
   sse: AES256                     # S3_SSE
   disable_cert_verification: true # S3_DISABLE_CERT_VERIFICATION
+  path_hostname_include: false    # S3_PATH_HOSTNAME_INCLUDE
 gcs:
   credentials_file: ""         # GCS_CREDENTIALS_FILE
   credentials_json: ""         # GCS_CREDENTIALS_JSON
@@ -127,6 +129,8 @@ gcs:
   path: ""                     # GCS_PATH
   compression_level: 1         # GCS_COMPRESSION_LEVEL
   compression_format: gzip     # GCS_COMPRESSION_FORMAT
+api:
+  listen_addr: "localhost:7171"  # API_LISTEN_ADDR
 ```
 
 ## ATTENTION!
