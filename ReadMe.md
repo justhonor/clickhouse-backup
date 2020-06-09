@@ -203,7 +203,7 @@ Get the default configuration: `curl -s localhost:7171/backup/config/default | j
 
 Update the current running configuration: `curl -v localhost:7171/backup/config -X POST --data-binary '@new_config.yml'`
 
-Be sure to check return code for parsing/validation errors.
+Be sure to check return code for config parsing/validation errors.
 
 ## Examples
 

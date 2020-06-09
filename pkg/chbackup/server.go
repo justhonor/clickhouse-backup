@@ -467,16 +467,5 @@ func (api *APIServer) httpDeleteHandler(w http.ResponseWriter, r *http.Request, 
 
 const rootHtml = `<html><body>
 <h1>clickhouse-backup API</h1>
-<ul>
-<li><b>/</b> This index page
-<li><b>/backup/tables</b> Print list of tables
-<li><b>/backup/list</b> Print list of backups
-<li><b>/backup/create</b> Create new backup
-<li><b>/backup/clean</b> Remove data in 'shadow' folder
-<li><b>/backup/delete</b> Delete specific backup
-<li><b>/backup/freeze</b> Freeze tables
-<li><b>/backup/upload</b> Upload backup to remote storage
-<li><b>/backup/download</b> Download backup from remote storage
-<li><b>/backup/restore</b> Create schema and restore data from backup
-</ul>
+See: <a href="https://github.com/Altinity/clickhouse-backup#api-configuration">https://github.com/Altinity/clickhouse-backup#api-configuration</a>
 </body></html>`
