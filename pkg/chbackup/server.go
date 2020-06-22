@@ -229,22 +229,25 @@ func (api *APIServer) httpCreateHandler(w http.ResponseWriter, r *http.Request, 
 	}
 	defer api.lock.Release(1)
 
-	tablePattern := ""
-	freezeOneByOne := false
-	desiredName := ""
-
 	query := r.URL.Query()
+	tablePattern := "*"
 	if tp, exist := query["table"]; exist {
 		tablePattern = tp[0]
 	}
+	databasePattern := "*"
+	if dp, exist := query["database"]; exist {
+		databasePattern = dp[0]
+	}
+	freezeOneByOne := false
 	if _, exist := query["freeze_one_by_one"]; exist {
 		freezeOneByOne = true
 	}
+	desiredName := ""
 	if dn, exist := query["name"]; exist {
 		desiredName = dn[0]
 	}
 
-	backup_name, err := CreateBackup(c, desiredName, tablePattern, freezeOneByOne)
+	backup_name, err := CreateBackup(c, desiredName, tablePattern, databasePattern, freezeOneByOne)
 	if err != nil {
 		log.Printf("CreateBackup error: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -275,9 +278,20 @@ func (api *APIServer) httpFreezeHandler(w http.ResponseWriter, r *http.Request, 
 	}
 	defer api.lock.Release(1)
 
-	tablePattern := ""
-	useOldWay := false
-	if err := Freeze(c, tablePattern, useOldWay); err != nil {
+	query := r.URL.Query()
+	tablePattern := "*"
+	if tp, exist := query["table"]; exist { // TK: multi-arg.
+		tablePattern = tp[0]
+	}
+	databasePattern := "*"
+	if dp, exist := query["database"]; exist {
+		databasePattern = dp[0]
+	}
+	freezeOneByOne := false
+	if _, exist := query["freeze_one_by_one"]; exist {
+		freezeOneByOne = true
+	}
+	if err := Freeze(c, tablePattern, databasePattern, freezeOneByOne); err != nil {
 		log.Printf("Freeze error: = %+v\n", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		out, _ := json.Marshal(APIResult{Success: false, Result: err.Error()})
@@ -363,7 +377,8 @@ func (api *APIServer) httpRestoreHandler(w http.ResponseWriter, r *http.Request,
 	defer api.lock.Release(1)
 
 	vars := mux.Vars(r)
-	tablePattern := ""
+	tablePattern := "*"
+	databasePattern := "*"
 	schemaOnly := false
 	dataOnly := false
 
@@ -371,13 +386,16 @@ func (api *APIServer) httpRestoreHandler(w http.ResponseWriter, r *http.Request,
 	if tp, exist := query["table"]; exist {
 		tablePattern = tp[0]
 	}
+	if dp, exist := query["database"]; exist {
+		databasePattern = dp[0]
+	}
 	if _, exist := query["schema"]; exist {
 		schemaOnly = true
 	}
 	if _, exist := query["data"]; exist {
 		dataOnly = true
 	}
-	if err := Restore(c, vars["name"], tablePattern, schemaOnly, dataOnly); err != nil {
+	if err := Restore(c, vars["name"], tablePattern, databasePattern, schemaOnly, dataOnly); err != nil {
 		log.Printf("Download error: %+v\n", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		out, _ := json.Marshal(APIResult{Success: false, Result: err.Error()})
