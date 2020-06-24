@@ -17,7 +17,7 @@ type GCS struct {
 }
 
 // Connect - connect to GCS
-func (gcs *GCS) Connect() error {
+func (gcs *GCS) Connect(overrideBucket string) error {
 	var err error
 	var clientOption option.ClientOption
 
@@ -40,9 +40,13 @@ func (gcs *GCS) Connect() error {
 	return nil
 }
 
-func (gcs *GCS) Walk(gcsPath string, process func(r RemoteFile)) error {
+func (gcs *GCS) Walk(gcsPath, overrideBucket, overridePath string, process func(r RemoteFile)) error {
 	ctx := context.Background()
-	it := gcs.client.Bucket(gcs.Config.Bucket).Objects(ctx, nil)
+	bucket := gcs.Config.Bucket
+	if len(overrideBucket) > 0 {
+		bucket = overrideBucket
+	}
+	it := gcs.client.Bucket(bucket).Objects(ctx, nil)
 	for {
 		object, err := it.Next()
 		switch err {
@@ -60,9 +64,13 @@ func (gcs *GCS) Kind() string {
 	return "GCS"
 }
 
-func (gcs *GCS) GetFileReader(key string) (io.ReadCloser, error) {
+func (gcs *GCS) GetFileReader(key, overrideBucket string) (io.ReadCloser, error) {
 	ctx := context.Background()
-	obj := gcs.client.Bucket(gcs.Config.Bucket).Object(key)
+	bucket := gcs.Config.Bucket
+	if len(overrideBucket) > 0 {
+		bucket = overrideBucket
+	}
+	obj := gcs.client.Bucket(bucket).Object(key)
 	reader, err := obj.NewReader(ctx)
 	if err != nil {
 		return nil, err
@@ -71,15 +79,23 @@ func (gcs *GCS) GetFileReader(key string) (io.ReadCloser, error) {
 	return reader, nil
 }
 
-func (gcs *GCS) GetFileWriter(key string) io.WriteCloser {
+func (gcs *GCS) GetFileWriter(key, overrideBucket string) io.WriteCloser {
 	ctx := context.Background()
-	obj := gcs.client.Bucket(gcs.Config.Bucket).Object(key)
+	bucket := gcs.Config.Bucket
+	if len(overrideBucket) > 0 {
+		bucket = overrideBucket
+	}
+	obj := gcs.client.Bucket(bucket).Object(key)
 	return obj.NewWriter(ctx)
 }
 
-func (gcs *GCS) PutFile(key string, r io.ReadCloser) error {
+func (gcs *GCS) PutFile(key, overrideBucket string, r io.ReadCloser) error {
 	ctx := context.Background()
-	obj := gcs.client.Bucket(gcs.Config.Bucket).Object(key)
+	bucket := gcs.Config.Bucket
+	if len(overrideBucket) > 0 {
+		bucket = overrideBucket
+	}
+	obj := gcs.client.Bucket(bucket).Object(key)
 	writer := obj.NewWriter(ctx)
 
 	if _, err := io.Copy(writer, r); err != nil {
@@ -92,9 +108,13 @@ func (gcs *GCS) PutFile(key string, r io.ReadCloser) error {
 	return nil
 }
 
-func (gcs *GCS) GetFile(key string) (RemoteFile, error) {
+func (gcs *GCS) GetFile(key, overrideBucket string) (RemoteFile, error) {
 	ctx := context.Background()
-	objAttr, err := gcs.client.Bucket(gcs.Config.Bucket).Object(key).Attrs(ctx)
+	bucket := gcs.Config.Bucket
+	if len(overrideBucket) > 0 {
+		bucket = overrideBucket
+	}
+	objAttr, err := gcs.client.Bucket(bucket).Object(key).Attrs(ctx)
 	if err != nil {
 		if err == storage.ErrObjectNotExist {
 			return nil, ErrNotFound
@@ -104,9 +124,13 @@ func (gcs *GCS) GetFile(key string) (RemoteFile, error) {
 	return &gcsFile{objAttr}, nil
 }
 
-func (gcs *GCS) DeleteFile(key string) error {
+func (gcs *GCS) DeleteFile(key, overrideBucket string) error {
 	ctx := context.Background()
-	object := gcs.client.Bucket(gcs.Config.Bucket).Object(key)
+	bucket := gcs.Config.Bucket
+	if len(overrideBucket) > 0 {
+		bucket = overrideBucket
+	}
+	object := gcs.client.Bucket(bucket).Object(key)
 	return object.Delete(ctx)
 }
 

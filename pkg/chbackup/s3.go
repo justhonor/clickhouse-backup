@@ -26,7 +26,7 @@ type S3 struct {
 }
 
 // Connect - connect to s3
-func (s *S3) Connect() error {
+func (s *S3) Connect(overrideBucket string) error {
 	var err error
 
 	awsDefaults := defaults.Get()
@@ -68,10 +68,15 @@ func (s *S3) Kind() string {
 	return "S3"
 }
 
-func (s *S3) GetFileReader(key string) (io.ReadCloser, error) {
+func (s *S3) GetFileReader(key, overrideBucket string) (io.ReadCloser, error) {
 	svc := s3.New(s.session)
+
+	bucket := s.Config.Bucket
+	if len(overrideBucket) > 0 {
+		bucket = overrideBucket
+	}
 	req, resp := svc.GetObjectRequest(&s3.GetObjectInput{
-		Bucket: aws.String(s.Config.Bucket),
+		Bucket: aws.String(bucket),
 		Key:    aws.String(key),
 	})
 	if err := req.Send(); err != nil {
@@ -81,7 +86,7 @@ func (s *S3) GetFileReader(key string) (io.ReadCloser, error) {
 	return resp.Body, nil
 }
 
-func (s *S3) PutFile(key string, r io.ReadCloser) error {
+func (s *S3) PutFile(key, overrideBucket string, r io.ReadCloser) error {
 	uploader := s3manager.NewUploader(s.session)
 	uploader.Concurrency = 10
 	uploader.PartSize = s.Config.PartSize
@@ -95,9 +100,13 @@ func (s *S3) PutFile(key string, r io.ReadCloser) error {
 		}
 	}
 
+	bucket := s.Config.Bucket
+	if len(overrideBucket) > 0 {
+		bucket = overrideBucket
+	}
 	_, err := uploader.Upload(&s3manager.UploadInput{
 		ACL:                  aws.String(s.Config.ACL),
-		Bucket:               aws.String(s.Config.Bucket),
+		Bucket:               aws.String(bucket),
 		Key:                  aws.String(key),
 		Body:                 r,
 		ServerSideEncryption: sse,
@@ -105,9 +114,13 @@ func (s *S3) PutFile(key string, r io.ReadCloser) error {
 	return err
 }
 
-func (s *S3) DeleteFile(key string) error {
+func (s *S3) DeleteFile(key, overrideBucket string) error {
+	bucket := s.Config.Bucket
+	if len(overrideBucket) > 0 {
+		bucket = overrideBucket
+	}
 	params := &s3.DeleteObjectInput{
-		Bucket: aws.String(s.Config.Bucket),
+		Bucket: aws.String(bucket),
 		Key:    aws.String(key),
 	}
 
@@ -118,10 +131,14 @@ func (s *S3) DeleteFile(key string) error {
 	return nil
 }
 
-func (s *S3) GetFile(key string) (RemoteFile, error) {
+func (s *S3) GetFile(key, overrideBucket string) (RemoteFile, error) {
 	svc := s3.New(s.session)
+	bucket := s.Config.Bucket
+	if len(overrideBucket) > 0 {
+		bucket = overrideBucket
+	}
 	head, err := svc.HeadObject(&s3.HeadObjectInput{
-		Bucket: aws.String(s.Config.Bucket),
+		Bucket: aws.String(bucket),
 		Key:    aws.String(key),
 	})
 	if err != nil {
@@ -134,17 +151,25 @@ func (s *S3) GetFile(key string) (RemoteFile, error) {
 	return &s3File{*head.ContentLength, *head.LastModified, key}, nil
 }
 
-func (s *S3) Walk(s3Path string, process func(r RemoteFile)) error {
-	return s.remotePager(s.Config.Path, false, func(page *s3.ListObjectsV2Output) {
+func (s *S3) Walk(s3Path, overrideBucket, overridePath string, process func(r RemoteFile)) error {
+	usePath := s.Config.Path
+	if len(overridePath) > 0 {
+		usePath = overridePath
+	}
+	return s.remotePager(usePath, false, overrideBucket, func(page *s3.ListObjectsV2Output) {
 		for _, c := range page.Contents {
 			process(&s3File{*c.Size, *c.LastModified, *c.Key})
 		}
 	})
 }
 
-func (s *S3) remotePager(s3Path string, delim bool, pager func(page *s3.ListObjectsV2Output)) error {
+func (s *S3) remotePager(s3Path string, delim bool, overrideBucket string, pager func(page *s3.ListObjectsV2Output)) error {
+	bucket := s.Config.Bucket
+	if len(overrideBucket) > 0 {
+		bucket = overrideBucket
+	}
 	params := &s3.ListObjectsV2Input{
-		Bucket:  aws.String(s.Config.Bucket), // Required
+		Bucket:  aws.String(bucket), // Required
 		MaxKeys: aws.Int64(1000),
 	}
 	if s3Path != "" && s3Path != "/" {

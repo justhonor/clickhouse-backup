@@ -342,7 +342,7 @@ func ListLocalBackups(config Config) ([]Backup, error) {
 }
 
 // getRemoteBackups - get all backups stored on remote storage
-func getRemoteBackups(config Config) ([]Backup, error) {
+func getRemoteBackups(config Config, overrideBucket, overridePath string) ([]Backup, error) {
 	if config.General.RemoteStorage == "none" {
 		fmt.Println("PrintRemoteBackups aborted: RemoteStorage set to \"none\"")
 		return []Backup{}, nil
@@ -351,12 +351,12 @@ func getRemoteBackups(config Config) ([]Backup, error) {
 	if err != nil {
 		return []Backup{}, err
 	}
-	err = bd.Connect()
+	err = bd.Connect(overrideBucket)
 	if err != nil {
 		return []Backup{}, err
 	}
 
-	backupList, err := bd.BackupList()
+	backupList, err := bd.BackupList(overrideBucket, overridePath)
 	if err != nil {
 		return []Backup{}, err
 	}
@@ -364,8 +364,8 @@ func getRemoteBackups(config Config) ([]Backup, error) {
 }
 
 // PrintRemoteBackups - print all backups stored on remote storage
-func PrintRemoteBackups(config Config, format string) error {
-	backupList, err := getRemoteBackups(config)
+func PrintRemoteBackups(config Config, format, overrideBucket, overridePath string) error {
+	backupList, err := getRemoteBackups(config, overrideBucket, overridePath)
 	if err != nil {
 		return err
 	}
@@ -590,7 +590,7 @@ func GetLocalBackup(config Config, backupName string) error {
 	return fmt.Errorf("backup '%s' not found", backupName)
 }
 
-func Upload(config Config, backupName string, diffFrom string) error {
+func Upload(config Config, backupName, diffFrom, overrideBucket, overridePath string) error {
 	if config.General.RemoteStorage == "none" {
 		fmt.Println("Upload aborted: RemoteStorage set to \"none\"")
 		return nil
@@ -610,7 +610,7 @@ func Upload(config Config, backupName string, diffFrom string) error {
 		return err
 	}
 
-	err = bd.Connect()
+	err = bd.Connect(overrideBucket)
 	if err != nil {
 		return fmt.Errorf("can't connect to %s with : %v", bd.Kind(), err)
 	}
@@ -624,24 +624,24 @@ func Upload(config Config, backupName string, diffFrom string) error {
 	if diffFrom != "" {
 		diffFromPath = path.Join(dataPath, "backup", diffFrom)
 	}
-	if err := bd.CompressedStreamUpload(backupPath, backupName, diffFromPath); err != nil {
+	if err := bd.CompressedStreamUpload(backupPath, backupName, diffFromPath, overrideBucket, overridePath); err != nil {
 		return fmt.Errorf("can't upload with %v", err)
 	}
-	if err := bd.RemoveOldBackups(bd.BackupsToKeep()); err != nil {
+	if err := bd.RemoveOldBackups(bd.BackupsToKeep(), overrideBucket, overridePath); err != nil {
 		return fmt.Errorf("can't remove old backups: %v", err)
 	}
 	log.Println("  Done.")
 	return nil
 }
 
-func Download(config Config, backupName string) error {
+func Download(config Config, backupName, overrideBucket, overridePath string) error {
 	if config.General.RemoteStorage == "none" {
 		fmt.Println("Download aborted: RemoteStorage set to \"none\"")
 		return nil
 	}
 	if backupName == "" {
 		fmt.Println("Select backup for download:")
-		PrintRemoteBackups(config, "all")
+		PrintRemoteBackups(config, "all", overrideBucket, overridePath)
 		os.Exit(1)
 	}
 	dataPath := getDataPath(config)
@@ -653,11 +653,11 @@ func Download(config Config, backupName string) error {
 		return err
 	}
 
-	err = bd.Connect()
+	err = bd.Connect(overrideBucket)
 	if err != nil {
 		return err
 	}
-	err = bd.CompressedStreamDownload(backupName, path.Join(dataPath, "backup", backupName))
+	err = bd.CompressedStreamDownload(backupName, path.Join(dataPath, "backup", backupName), overrideBucket, overridePath)
 	if err != nil {
 		return err
 	}
@@ -721,7 +721,7 @@ func RemoveBackupLocal(config Config, backupName string) error {
 	return fmt.Errorf("backup '%s' not found", backupName)
 }
 
-func RemoveBackupRemote(config Config, backupName string) error {
+func RemoveBackupRemote(config Config, backupName, overrideBucket, overridePath string) error {
 	if config.General.RemoteStorage == "none" {
 		fmt.Println("RemoveBackupRemote aborted: RemoteStorage set to \"none\"")
 		return nil
@@ -735,17 +735,17 @@ func RemoveBackupRemote(config Config, backupName string) error {
 	if err != nil {
 		return err
 	}
-	err = bd.Connect()
+	err = bd.Connect(overrideBucket)
 	if err != nil {
 		return fmt.Errorf("can't connect to remote storage with: %v", err)
 	}
-	backupList, err := bd.BackupList()
+	backupList, err := bd.BackupList(overrideBucket, overridePath)
 	if err != nil {
 		return err
 	}
 	for _, backup := range backupList {
 		if backup.Name == backupName {
-			return bd.RemoveBackup(backupName)
+			return bd.RemoveBackup(backupName, overrideBucket, overridePath)
 		}
 	}
 	return fmt.Errorf("backup '%s' not found on remote storage", backupName)

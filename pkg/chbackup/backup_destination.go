@@ -49,12 +49,12 @@ type RemoteFile interface {
 // RemoteStorage -
 type RemoteStorage interface {
 	Kind() string
-	GetFile(string) (RemoteFile, error)
-	DeleteFile(string) error
-	Connect() error
-	Walk(string, func(RemoteFile)) error
-	GetFileReader(key string) (io.ReadCloser, error)
-	PutFile(key string, r io.ReadCloser) error
+	GetFile(key, overrideBucket string) (RemoteFile, error)
+	DeleteFile(key, overrideBucket string) error
+	Connect(overrideBucket string) error
+	Walk(string, string, string, func(RemoteFile)) error
+	GetFileReader(key, overrideBucket string) (io.ReadCloser, error)
+	PutFile(key, overrideBucket string, r io.ReadCloser) error
 }
 
 type BackupDestination struct {
@@ -66,34 +66,38 @@ type BackupDestination struct {
 	backupsToKeep      int
 }
 
-func (bd *BackupDestination) RemoveOldBackups(keep int) error {
+func (bd *BackupDestination) RemoveOldBackups(keep int, overrideBucket, overridePath string) error {
 	if keep < 1 {
 		return nil
 	}
-	backupList, err := bd.BackupList()
+	backupList, err := bd.BackupList(overrideBucket, overridePath)
 	if err != nil {
 		return err
 	}
 	backupsToDelete := GetBackupsToDelete(backupList, keep)
 	for _, backupToDelete := range backupsToDelete {
-		if err := bd.RemoveBackup(backupToDelete.Name); err != nil {
+		if err := bd.RemoveBackup(backupToDelete.Name, overrideBucket, overridePath); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (bd *BackupDestination) RemoveBackup(backupName string) error {
+func (bd *BackupDestination) RemoveBackup(backupName, overrideBucket, overridePath string) error {
 	objects := []string{}
-	if err := bd.Walk(bd.path, func(f RemoteFile) {
-		if strings.HasPrefix(f.Name(), path.Join(bd.path, backupName)) {
+	usePath := bd.path
+	if len(overridePath) > 0 {
+		usePath = overridePath
+	}
+	if err := bd.Walk(usePath, overrideBucket, overridePath, func(f RemoteFile) {
+		if strings.HasPrefix(f.Name(), path.Join(usePath, backupName)) {
 			objects = append(objects, f.Name())
 		}
 	}); err != nil {
 		return err
 	}
 	for _, key := range objects {
-		err := bd.DeleteFile(key)
+		err := bd.DeleteFile(key, overrideBucket)
 		if err != nil {
 			return err
 		}
@@ -105,7 +109,7 @@ func (bd *BackupDestination) BackupsToKeep() int {
 	return bd.backupsToKeep
 }
 
-func (bd *BackupDestination) BackupList() ([]Backup, error) {
+func (bd *BackupDestination) BackupList(overrideBucket, overridePath string) ([]Backup, error) {
 	type ClickhouseBackup struct {
 		Metadata bool
 		Shadow   bool
@@ -115,7 +119,7 @@ func (bd *BackupDestination) BackupList() ([]Backup, error) {
 	}
 	files := map[string]ClickhouseBackup{}
 	path := bd.path
-	err := bd.Walk(path, func(o RemoteFile) {
+	err := bd.Walk(path, overrideBucket, overridePath, func(o RemoteFile) {
 		if strings.HasPrefix(o.Name(), path) {
 			key := strings.TrimPrefix(o.Name(), path)
 			key = strings.TrimPrefix(key, "/")
@@ -162,20 +166,24 @@ func (bd *BackupDestination) BackupList() ([]Backup, error) {
 	return result, nil
 }
 
-func (bd *BackupDestination) CompressedStreamDownload(remotePath string, localPath string) error {
+func (bd *BackupDestination) CompressedStreamDownload(remotePath, localPath, overrideBucket, overridePath string) error {
 	if err := os.MkdirAll(localPath, os.ModePerm); err != nil {
 		return err
 	}
-	archiveName := path.Join(bd.path, fmt.Sprintf("%s.%s", remotePath, getExtension(bd.compressionFormat)))
-	if err := bd.Connect(); err != nil {
+	usePath := bd.path
+	if len(overridePath) > 0 {
+		usePath = overridePath
+	}
+	archiveName := path.Join(usePath, fmt.Sprintf("%s.%s", remotePath, getExtension(bd.compressionFormat)))
+	if err := bd.Connect(overrideBucket); err != nil {
 		return err
 	}
 
-	reader, err := bd.GetFileReader(archiveName)
+	reader, err := bd.GetFileReader(archiveName, overrideBucket)
 	if err != nil {
 		return err
 	}
-	file, err := bd.GetFile(archiveName)
+	file, err := bd.GetFile(archiveName, overrideBucket)
 	if err != nil {
 		return err
 	}
@@ -234,7 +242,7 @@ func (bd *BackupDestination) CompressedStreamDownload(remotePath string, localPa
 	}
 	if metafile.RequiredBackup != "" {
 		log.Printf("Backup '%s' required '%s'. Downloading.", remotePath, metafile.RequiredBackup)
-		err := bd.CompressedStreamDownload(metafile.RequiredBackup, filepath.Join(filepath.Dir(localPath), metafile.RequiredBackup))
+		err := bd.CompressedStreamDownload(metafile.RequiredBackup, filepath.Join(filepath.Dir(localPath), metafile.RequiredBackup), overrideBucket, overridePath)
 		if err != nil && !os.IsExist(err) {
 			return fmt.Errorf("can't download '%s' with %v", metafile.RequiredBackup, err)
 		}
@@ -254,10 +262,14 @@ func (bd *BackupDestination) CompressedStreamDownload(remotePath string, localPa
 	return nil
 }
 
-func (bd *BackupDestination) CompressedStreamUpload(localPath, remotePath, diffFromPath string) error {
-	archiveName := path.Join(bd.path, fmt.Sprintf("%s.%s", remotePath, getExtension(bd.compressionFormat)))
+func (bd *BackupDestination) CompressedStreamUpload(localPath, remotePath, diffFromPath, overrideBucket, overridePath string) error {
+	usePath := bd.path
+	if len(overridePath) > 0 {
+		usePath = overridePath
+	}
+	archiveName := path.Join(usePath, fmt.Sprintf("%s.%s", remotePath, getExtension(bd.compressionFormat)))
 
-	if _, err := bd.GetFile(archiveName); err != nil {
+	if _, err := bd.GetFile(archiveName, overrideBucket); err != nil {
 		if err != ErrNotFound {
 			return err
 		}
@@ -377,7 +389,7 @@ func (bd *BackupDestination) CompressedStreamUpload(localPath, remotePath, diffF
 		return
 	}()
 
-	if err := bd.PutFile(archiveName, body); err != nil {
+	if err := bd.PutFile(archiveName, overrideBucket, body); err != nil {
 		return err
 	}
 	bar.Finish()

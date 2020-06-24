@@ -197,9 +197,10 @@ func httpListHandler(w http.ResponseWriter, r *http.Request, c Config) {
 		fmt.Fprintf(w, string(out))
 		return
 	}
+	vars := mux.Vars(r)
 	fullList := APIBackupsList{Local: localBackups}
 	if c.General.RemoteStorage != "none" {
-		remoteBackups, err := getRemoteBackups(c)
+		remoteBackups, err := getRemoteBackups(c, vars["bucket"], vars["path"])
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			out, _ := json.Marshal(APIResult{Success: false, Result: err.Error()})
@@ -347,7 +348,7 @@ func (api *APIServer) httpUploadHandler(w http.ResponseWriter, r *http.Request, 
 	if df, exist := query["diff-from"]; exist {
 		diffFrom = df[0]
 	}
-	if err := Upload(c, vars["name"], diffFrom); err != nil {
+	if err := Upload(c, vars["name"], diffFrom, vars["bucket"], vars["path"]); err != nil {
 		log.Printf("Upload error: %+v\n", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		out, _ := json.Marshal(APIResult{Success: false, Result: err.Error()})
@@ -416,7 +417,7 @@ func (api *APIServer) httpRestoreHandler(w http.ResponseWriter, r *http.Request,
 }
 func (api *APIServer) httpDownloadHandler(w http.ResponseWriter, r *http.Request, c Config) {
 	vars := mux.Vars(r)
-	if err := Download(c, vars["name"]); err != nil {
+	if err := Download(c, vars["name"], vars["bucket"], vars["path"]); err != nil {
 		log.Printf("Download error: %+v\n", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		out, _ := json.Marshal(APIResult{Success: false, Result: err.Error()})
@@ -457,7 +458,7 @@ func (api *APIServer) httpDeleteHandler(w http.ResponseWriter, r *http.Request, 
 			return
 		}
 	case "remote":
-		if err := RemoveBackupRemote(c, vars["name"]); err != nil {
+		if err := RemoveBackupRemote(c, vars["name"], vars["bucket"], vars["path"]); err != nil {
 			log.Printf("RemoveBackupRemote error: %+v\n", err)
 			w.WriteHeader(http.StatusInternalServerError)
 			out, _ := json.Marshal(APIResult{Success: false, Result: err.Error()})

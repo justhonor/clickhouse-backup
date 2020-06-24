@@ -79,34 +79,45 @@ func main() {
 				cli.BoolFlag{
 					Name:   "freeze-one-by-one, f",
 					Hidden: false,
+					Usage:  "Force FREEZING the 'old way', one partition at a time, even if using a version > 19.00.10.05",
 				},
 			),
 		},
 		{
 			Name:      "upload",
 			Usage:     "Upload backup to remote storage",
-			UsageText: "clickhouse-backup upload [--diff-from=<backup_name>] <backup_name>",
+			UsageText: "clickhouse-backup upload [--diff-from=<backup_name>] [--bucket=<bucket>] [--path=<path>] <backup_name>",
 			Action: func(c *cli.Context) error {
-				return chbackup.Upload(*getConfig(c), c.Args().First(), c.String("diff-from"))
+				return chbackup.Upload(*getConfig(c), c.Args().First(), c.String("diff-from"), c.String("bucket"), c.String("path"))
 			},
 			Flags: append(cliapp.Flags,
 				cli.StringFlag{
 					Name:   "diff-from",
 					Hidden: false,
 				},
+				cli.StringFlag{
+					Name:   "bucket",
+					Hidden: false,
+					Usage:  "Override S3 bucket/GCS bucket/COS URL.",
+				},
+				cli.StringFlag{
+					Name:   "path",
+					Hidden: false,
+					Usage:  "Override S3/GCS/COS path.",
+				},
 			),
 		},
 		{
 			Name:      "list",
 			Usage:     "Print list of backups",
-			UsageText: "clickhouse-backup list [all|local|remote] [latest|penult]",
+			UsageText: "clickhouse-backup list [all|local|remote] [latest|penult] [--bucket=<bucket>] [--path=<path>] <backup_name>",
 			Action: func(c *cli.Context) error {
 				config := getConfig(c)
 				switch c.Args().Get(0) {
 				case "local":
 					return chbackup.PrintLocalBackups(*config, c.Args().Get(1))
 				case "remote":
-					return chbackup.PrintRemoteBackups(*config, c.Args().Get(1))
+					return chbackup.PrintRemoteBackups(*config, c.Args().Get(1), c.String("bucket"), c.String("path"))
 				case "all", "":
 					fmt.Println("Local backups:")
 					if err := chbackup.PrintLocalBackups(*config, c.Args().Get(1)); err != nil {
@@ -114,7 +125,7 @@ func main() {
 					}
 					if config.General.RemoteStorage != "none" {
 						fmt.Println("Remote backups:")
-						if err := chbackup.PrintRemoteBackups(*config, c.Args().Get(1)); err != nil {
+						if err := chbackup.PrintRemoteBackups(*config, c.Args().Get(1), c.String("bucket"), c.String("path")); err != nil {
 							return err
 						}
 					}
@@ -124,16 +135,38 @@ func main() {
 				}
 				return nil
 			},
-			Flags: cliapp.Flags,
+			Flags: append(cliapp.Flags,
+				cli.StringFlag{
+					Name:   "bucket",
+					Hidden: false,
+					Usage:  "Override S3 bucket/GCS bucket/COS URL.",
+				},
+				cli.StringFlag{
+					Name:   "path",
+					Hidden: false,
+					Usage:  "Override S3/GCS/COS path.",
+				},
+			),
 		},
 		{
 			Name:      "download",
 			Usage:     "Download backup from remote storage",
-			UsageText: "clickhouse-backup download <backup_name>",
+			UsageText: "clickhouse-backup download [--bucket=<bucket>] [--path=<path>] <backup_name>",
 			Action: func(c *cli.Context) error {
-				return chbackup.Download(*getConfig(c), c.Args().First())
+				return chbackup.Download(*getConfig(c), c.Args().First(), c.String("bucket"), c.String("path"))
 			},
-			Flags: cliapp.Flags,
+			Flags: append(cliapp.Flags,
+				cli.StringFlag{
+					Name:   "bucket",
+					Hidden: false,
+					Usage:  "Override S3 bucket/GCS bucket/COS URL.",
+				},
+				cli.StringFlag{
+					Name:   "path",
+					Hidden: false,
+					Usage:  "Override S3/GCS/COS path.",
+				},
+			),
 		},
 		{
 			Name:      "restore",
@@ -166,7 +199,7 @@ func main() {
 		{
 			Name:      "delete",
 			Usage:     "Delete specific backup",
-			UsageText: "clickhouse-backup delete <local|remote> <backup_name>",
+			UsageText: "clickhouse-backup delete [--bucket=<bucket>] [--path=<path>] <local|remote> <backup_name>",
 			Action: func(c *cli.Context) error {
 				config := getConfig(c)
 				if c.Args().Get(1) == "" {
@@ -177,14 +210,25 @@ func main() {
 				case "local":
 					return chbackup.RemoveBackupLocal(*config, c.Args().Get(1))
 				case "remote":
-					return chbackup.RemoveBackupRemote(*config, c.Args().Get(1))
+					return chbackup.RemoveBackupRemote(*config, c.Args().Get(1), c.String("bucket"), c.String("path"))
 				default:
 					fmt.Fprintf(os.Stderr, "Unknown command '%s'\n", c.Args().Get(0))
 					cli.ShowCommandHelpAndExit(c, c.Command.Name, 1)
 				}
 				return nil
 			},
-			Flags: cliapp.Flags,
+			Flags: append(cliapp.Flags,
+				cli.StringFlag{
+					Name:   "bucket",
+					Hidden: false,
+					Usage:  "Override S3 bucket/GCS bucket/COS URL.",
+				},
+				cli.StringFlag{
+					Name:   "path",
+					Hidden: false,
+					Usage:  "Override S3/GCS/COS path.",
+				},
+			),
 		},
 		{
 			Name:  "default-config",
@@ -214,6 +258,7 @@ func main() {
 				cli.BoolFlag{
 					Name:   "freeze-one-by-one, f",
 					Hidden: false,
+					Usage:  "Force FREEZING the 'old way', one partition at a time, even if using a version > 19.00.10.05",
 				},
 			),
 		},
