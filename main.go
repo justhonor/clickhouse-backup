@@ -61,19 +61,15 @@ func main() {
 		{
 			Name:        "create",
 			Usage:       "Create new backup",
-			UsageText:   "clickhouse-backup create [-t, --tables=<db>.<table>] [-d, --databases=<db>] [-f, --freeze-one-by-one] <backup_name>",
+			UsageText:   "clickhouse-backup create [-t, --tables=<db>.<table>] [-f, --freeze-one-by-one] <backup_name>",
 			Description: "Create new backup",
 			Action: func(c *cli.Context) error {
-				_, err := chbackup.CreateBackup(*getConfig(c), c.Args().First(), c.String("t"), c.String("d"), c.Bool("f"))
+				_, err := chbackup.CreateBackup(*getConfig(c), c.Args().First(), c.String("t"), c.Bool("f"))
 				return err
 			},
 			Flags: append(cliapp.Flags,
 				cli.StringFlag{
 					Name:   "table, tables, t",
-					Hidden: false,
-				},
-				cli.StringFlag{
-					Name:   "database, databases, d",
 					Hidden: false,
 				},
 				cli.BoolFlag{
@@ -138,17 +134,13 @@ func main() {
 		{
 			Name:      "restore",
 			Usage:     "Create schema and restore data from backup",
-			UsageText: "clickhouse-backup restore [--schema] [--data] [-t, --tables=<db>.<table>] [-d, --databases=<db>] <backup_name>",
+			UsageText: "clickhouse-backup restore [--schema] [--data] [-t, --tables=<db>.<table>] <backup_name>",
 			Action: func(c *cli.Context) error {
-				return chbackup.Restore(*getConfig(c), c.Args().First(), c.String("t"), c.String("d"), c.Bool("s"), c.Bool("d"))
+				return chbackup.Restore(*getConfig(c), c.Args().First(), c.String("t"), c.Bool("s"), c.Bool("d"))
 			},
 			Flags: append(cliapp.Flags,
 				cli.StringFlag{
 					Name:   "table, tables, t",
-					Hidden: false,
-				},
-				cli.StringFlag{
-					Name:   "database, databases, d",
 					Hidden: false,
 				},
 				cli.BoolFlag{
@@ -197,18 +189,14 @@ func main() {
 		{
 			Name:        "freeze",
 			Usage:       "Freeze tables",
-			UsageText:   "clickhouse-backup freeze [-t, --tables=<db>.<table>] [-d, --databases=<db>] [-f, --freeze-one-by-one] <backup_name>",
+			UsageText:   "clickhouse-backup freeze [-t, --tables=<db>.<table>] [-f, --freeze-one-by-one] <backup_name>",
 			Description: "Freeze tables",
 			Action: func(c *cli.Context) error {
-				return chbackup.Freeze(*getConfig(c), c.String("t"), c.String("d"), c.Bool("f"))
+				return chbackup.Freeze(*getConfig(c), c.String("t"), c.Bool("f"))
 			},
 			Flags: append(cliapp.Flags,
 				cli.StringFlag{
 					Name:   "table, tables, t",
-					Hidden: false,
-				},
-				cli.StringFlag{
-					Name:   "database, databases, d",
 					Hidden: false,
 				},
 				cli.BoolFlag{

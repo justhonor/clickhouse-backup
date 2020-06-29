@@ -51,62 +51,33 @@ func addRestoreTable(tables RestoreTables, table RestoreTable) RestoreTables {
 	return append(tables, table)
 }
 
-func parsePatternsForFreeze(tables []Table, tablePattern, databasePattern string) []Table {
-	tablePatterns := []string{""}
-	if tablePattern != "" {
-		tablePatterns = strings.Split(tablePattern, ",")
+func parseTablePatternForFreeze(tables []Table, tablePattern string) []Table {
+	if tablePattern == "" {
+		return tables
 	}
-	databasePatterns := []string{""}
-	if databasePattern != "" {
-		databasePatterns = strings.Split(databasePattern, ",")
-	}
+	tablePatterns := strings.Split(tablePattern, ",")
 	var result []Table
 	for _, t := range tables {
-		ismatched := false
 		for _, pattern := range tablePatterns {
 			if matched, _ := filepath.Match(pattern, fmt.Sprintf("%s.%s", t.Database, t.Name)); matched {
 				result = addTable(result, t)
-				ismatched = true
-				break
-			}
-		}
-		if !ismatched {
-			for _, pattern := range databasePatterns {
-				if matched, _ := filepath.Match(pattern, t.Database); matched {
-					result = addTable(result, t)
-					break
-				}
 			}
 		}
 	}
 	return result
 }
 
-func parsePatternsForRestoreData(tables map[string]BackupTable, tablePattern, databasePattern string) []BackupTable {
-	tablePatterns := []string{""}
+func parseTablePatternForRestoreData(tables map[string]BackupTable, tablePattern string) []BackupTable {
+	tablePatterns := []string{"*"}
 	if tablePattern != "" {
 		tablePatterns = strings.Split(tablePattern, ",")
 	}
-	databasePatterns := []string{""}
-	if databasePattern != "" {
-		databasePatterns = strings.Split(databasePattern, ",")
-	}
 	result := BackupTables{}
 	for _, t := range tables {
-		ismatched := false
 		for _, pattern := range tablePatterns {
 			tableName := fmt.Sprintf("%s.%s", t.Database, t.Name)
 			if matched, _ := filepath.Match(pattern, tableName); matched {
 				result = addBackupTable(result, t)
-				break
-			}
-		}
-		if !ismatched {
-			for _, pattern := range databasePatterns {
-				if matched, _ := filepath.Match(pattern, t.Database); matched {
-					result = addBackupTable(result, t)
-					break
-				}
 			}
 		}
 	}
@@ -114,17 +85,13 @@ func parsePatternsForRestoreData(tables map[string]BackupTable, tablePattern, da
 	return result
 }
 
-func parseSchemaPattern(metadataPath string, tablePattern, databasePattern string) (RestoreTables, error) {
+func parseSchemaPattern(metadataPath string, tablePattern string) (RestoreTables, error) {
 	regularTables := RestoreTables{}
 	distributedTables := RestoreTables{}
 	viewTables := RestoreTables{}
-	tablePatterns := []string{""}
+	tablePatterns := []string{"*"}
 	if tablePattern != "" {
 		tablePatterns = strings.Split(tablePattern, ",")
-	}
-	databasePatterns := []string{""}
-	if databasePattern != "" {
-		databasePatterns = strings.Split(databasePattern, ",")
 	}
 	if err := filepath.Walk(metadataPath, func(filePath string, info os.FileInfo, err error) error {
 		if !strings.HasSuffix(filePath, ".sql") || !info.Mode().IsRegular() {
@@ -137,45 +104,32 @@ func parseSchemaPattern(metadataPath string, tablePattern, databasePattern strin
 			return nil
 		}
 		database, _ := url.PathUnescape(parts[0])
-		databaseMatch := fmt.Sprintf("%s.*", database)
 		table, _ := url.PathUnescape(parts[1])
 		tableName := fmt.Sprintf("%s.%s", database, table)
-		matched := false
 		for _, p := range tablePatterns {
-			if match, _ := filepath.Match(p, tableName); match {
-				matched = true
-				break
-			}
-		}
-		if !matched {
-			for _, p := range databasePatterns {
-				if match, _ := filepath.Match(p, databaseMatch); match {
-					matched = true
-					break
+			if matched, _ := filepath.Match(p, tableName); matched {
+				data, err := ioutil.ReadFile(filePath)
+				if err != nil {
+					return err
 				}
-			}
-		}
-		if matched {
-			data, err := ioutil.ReadFile(filePath)
-			if err != nil {
-				return err
-			}
-			restoreTable := RestoreTable{
-				Database: database,
-				Table:    table,
-				Query:    strings.Replace(string(data), "ATTACH", "CREATE", 1),
-				Path:     filePath,
-			}
-			if strings.Contains(restoreTable.Query, "ENGINE = Distributed") {
-				distributedTables = addRestoreTable(distributedTables, restoreTable)
+				restoreTable := RestoreTable{
+					Database: database,
+					Table:    table,
+					Query:    strings.Replace(string(data), "ATTACH", "CREATE", 1),
+					Path:     filePath,
+				}
+				if strings.Contains(restoreTable.Query, "ENGINE = Distributed") {
+					distributedTables = addRestoreTable(distributedTables, restoreTable)
+					return nil
+				}
+				if strings.HasPrefix(restoreTable.Query, "CREATE VIEW") ||
+					strings.HasPrefix(restoreTable.Query, "CREATE MATERIALIZED VIEW") {
+					viewTables = addRestoreTable(viewTables, restoreTable)
+					return nil
+				}
+				regularTables = addRestoreTable(regularTables, restoreTable)
 				return nil
 			}
-			if strings.HasPrefix(restoreTable.Query, "CREATE VIEW") ||
-				strings.HasPrefix(restoreTable.Query, "CREATE MATERIALIZED VIEW") {
-				viewTables = addRestoreTable(viewTables, restoreTable)
-				return nil
-			}
-			regularTables = addRestoreTable(regularTables, restoreTable)
 		}
 		return nil
 	}); err != nil {
@@ -223,7 +177,7 @@ func PrintTables(config Config) error {
 	return nil
 }
 
-func restoreSchema(config Config, backupName string, tablePattern, databasePattern string) error {
+func restoreSchema(config Config, backupName string, tablePattern string) error {
 	if backupName == "" {
 		fmt.Println("Select backup for restore:")
 		PrintLocalBackups(config, "all")
@@ -241,12 +195,12 @@ func restoreSchema(config Config, backupName string, tablePattern, databasePatte
 	if !info.IsDir() {
 		return fmt.Errorf("%s is not a dir", metadataPath)
 	}
-	tablesForRestore, err := parseSchemaPattern(metadataPath, tablePattern, databasePattern)
+	tablesForRestore, err := parseSchemaPattern(metadataPath, tablePattern)
 	if err != nil {
 		return err
 	}
 	if len(tablesForRestore) == 0 {
-		return fmt.Errorf("no schemas found with tablePattern=%s  and databasePattern=%s in %s", tablePattern, databasePattern, backupName)
+		return fmt.Errorf("no have found schemas by %s in %s", tablePattern, backupName)
 	}
 	ch := &ClickHouse{
 		Config: &config.ClickHouse,
@@ -373,7 +327,7 @@ func PrintRemoteBackups(config Config, format string) error {
 }
 
 // Freeze - freeze tables by tablePattern
-func Freeze(config Config, tablePattern, databasePattern string, useOldWay bool) error {
+func Freeze(config Config, tablePattern string, useOldWay bool) error {
 	ch := &ClickHouse{
 		Config: &config.ClickHouse,
 	}
@@ -401,7 +355,7 @@ func Freeze(config Config, tablePattern, databasePattern string, useOldWay bool)
 	if err != nil {
 		return fmt.Errorf("can't get Clickhouse tables with: %v", err)
 	}
-	backupTables := parsePatternsForFreeze(allTables, tablePattern, databasePattern)
+	backupTables := parseTablePatternForFreeze(allTables, tablePattern)
 	if len(backupTables) == 0 {
 		return fmt.Errorf("there are no tables in Clickhouse, create something to freeze")
 	}
@@ -422,9 +376,9 @@ func NewBackupName() string {
 	return time.Now().UTC().Format(BackupTimeFormat)
 }
 
-// CreateBackup - create new backup of all tables matched by tablePattern or databasePattern
+// CreateBackup - create new backup of all tables matched by tablePattern
 // If backupName is empty string will use default backup name
-func CreateBackup(config Config, backupName, tablePattern, databasePattern string, useOldWay bool) (string, error) {
+func CreateBackup(config Config, backupName, tablePattern string, useOldWay bool) (string, error) {
 	if backupName == "" {
 		backupName = NewBackupName()
 	}
@@ -440,11 +394,11 @@ func CreateBackup(config Config, backupName, tablePattern, databasePattern strin
 		return backupName, fmt.Errorf("can't create backup with %v", err)
 	}
 	log.Printf("Create backup '%s'", backupName)
-	if err := Freeze(config, tablePattern, databasePattern, useOldWay); err != nil {
+	if err := Freeze(config, tablePattern, useOldWay); err != nil {
 		return backupName, err
 	}
 	log.Println("Copy metadata")
-	schemaList, err := parseSchemaPattern(path.Join(dataPath, "metadata"), tablePattern, databasePattern)
+	schemaList, err := parseSchemaPattern(path.Join(dataPath, "metadata"), tablePattern)
 	if err != nil {
 		return backupName, err
 	}
@@ -484,15 +438,15 @@ func CreateBackup(config Config, backupName, tablePattern, databasePattern strin
 }
 
 // Restore - restore tables matched by tablePattern from backupName
-func Restore(config Config, backupName string, tablePattern, databasePattern string, schemaOnly bool, dataOnly bool) error {
+func Restore(config Config, backupName string, tablePattern string, schemaOnly bool, dataOnly bool) error {
 	if schemaOnly || (schemaOnly == dataOnly) {
-		err := restoreSchema(config, backupName, tablePattern, databasePattern)
+		err := restoreSchema(config, backupName, tablePattern)
 		if err != nil {
 			return err
 		}
 	}
 	if dataOnly || (schemaOnly == dataOnly) {
-		err := RestoreData(config, backupName, tablePattern, databasePattern)
+		err := RestoreData(config, backupName, tablePattern)
 		if err != nil {
 			return err
 		}
@@ -501,7 +455,7 @@ func Restore(config Config, backupName string, tablePattern, databasePattern str
 }
 
 // RestoreData - restore data for tables matched by tablePattern from backupName
-func RestoreData(config Config, backupName string, tablePattern, databasePattern string) error {
+func RestoreData(config Config, backupName string, tablePattern string) error {
 	if backupName == "" {
 		fmt.Println("Select backup for restore:")
 		PrintLocalBackups(config, "all")
@@ -523,7 +477,7 @@ func RestoreData(config Config, backupName string, tablePattern, databasePattern
 	if err != nil {
 		return err
 	}
-	restoreTables := parsePatternsForRestoreData(allBackupTables, tablePattern, databasePattern)
+	restoreTables := parseTablePatternForRestoreData(allBackupTables, tablePattern)
 	chTables, err := ch.GetTables()
 	if err != nil {
 		return err
