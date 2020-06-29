@@ -118,10 +118,13 @@ func (bd *BackupDestination) BackupList(overrideBucket, overridePath string) ([]
 		Date     time.Time
 	}
 	files := map[string]ClickhouseBackup{}
-	path := bd.path
-	err := bd.Walk(path, overrideBucket, overridePath, func(o RemoteFile) {
-		if strings.HasPrefix(o.Name(), path) {
-			key := strings.TrimPrefix(o.Name(), path)
+	usePath := bd.path
+	if len(overridePath) > 0 {
+		usePath = overridePath
+	}
+	err := bd.Walk(usePath, overrideBucket, overridePath, func(o RemoteFile) {
+		if strings.HasPrefix(o.Name(), usePath) {
+			key := strings.TrimPrefix(o.Name(), usePath)
 			key = strings.TrimPrefix(key, "/")
 			parts := strings.Split(key, "/")
 			if strings.HasSuffix(parts[0], ".tar") ||
