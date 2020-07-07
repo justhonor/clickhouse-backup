@@ -22,13 +22,23 @@ type APIServer struct {
 }
 
 type APIResult struct {
-	Success bool
-	Result  interface{}
+	Type    string
+	Message string
 }
 
-type APIBackupsList struct {
-	Local  []Backup
-	Remote []Backup
+type APIGenericResult struct {
+	Type   string
+	Result interface{}
+}
+
+type APIListResult struct {
+	Type string
+	Backup
+}
+
+type APITablesResult struct {
+	Type string
+	Table
 }
 
 var (
@@ -109,10 +119,10 @@ func httpRootHandler(w http.ResponseWriter, r *http.Request) {
 func httpConfigDefaultHandler(w http.ResponseWriter, r *http.Request, c Config) {
 	defaultConfig := DefaultConfig()
 	d, _ := yaml.Marshal(&defaultConfig)
-	out, err := json.Marshal(APIResult{Success: true, Result: string(d)})
+	out, err := json.Marshal(APIGenericResult{Type: "success", Result: string(d)})
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		out, _ := json.Marshal(APIResult{Success: false, Result: err.Error()})
+		out, _ := json.Marshal(APIResult{Type: "error", Message: err.Error()})
 		fmt.Fprintf(w, string(out))
 		return
 	}
@@ -121,10 +131,10 @@ func httpConfigDefaultHandler(w http.ResponseWriter, r *http.Request, c Config) 
 
 func httpConfigHandler(w http.ResponseWriter, r *http.Request, c Config) {
 	cfg, _ := yaml.Marshal(&c)
-	out, err := json.Marshal(APIResult{Success: true, Result: string(cfg)})
+	out, err := json.Marshal(APIGenericResult{Type: "success", Result: string(cfg)})
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		out, _ := json.Marshal(APIResult{Success: false, Result: err.Error()})
+		out, _ := json.Marshal(APIResult{Type: "error", Message: err.Error()})
 		fmt.Fprintf(w, string(out))
 		return
 	}
@@ -135,7 +145,7 @@ func (api *APIServer) httpConfigUpdateHandler(w http.ResponseWriter, r *http.Req
 	if locked := api.lock.TryAcquire(1); !locked {
 		log.Println(ErrAPILocked)
 		w.WriteHeader(http.StatusServiceUnavailable)
-		out, _ := json.Marshal(APIResult{Success: false, Result: ErrAPILocked})
+		out, _ := json.Marshal(APIResult{Type: "error", Message: ErrAPILocked.Error()})
 		fmt.Fprintf(w, string(out))
 		return
 	}
@@ -145,7 +155,7 @@ func (api *APIServer) httpConfigUpdateHandler(w http.ResponseWriter, r *http.Req
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		out, _ := json.Marshal(APIResult{Success: false, Result: fmt.Sprintf("Error parsing POST form: %v", err.Error())})
+		out, _ := json.Marshal(APIResult{Type: "error", Message: fmt.Sprintf("Error parsing POST form: %v", err.Error())})
 		fmt.Fprintf(w, string(out))
 		return
 	}
@@ -153,14 +163,14 @@ func (api *APIServer) httpConfigUpdateHandler(w http.ResponseWriter, r *http.Req
 	newConfig := DefaultConfig()
 	if err := yaml.Unmarshal(body, &newConfig); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		out, _ := json.Marshal(APIResult{Success: false, Result: fmt.Sprintf("Error parsing new config: %v", err.Error())})
+		out, _ := json.Marshal(APIResult{Type: "error", Message: fmt.Sprintf("Error parsing new config: %v", err.Error())})
 		fmt.Fprintf(w, string(out))
 		return
 	}
 
 	if err := validateConfig(newConfig); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		out, _ := json.Marshal(APIResult{Success: false, Result: fmt.Sprintf("Error validating new config: %v", err.Error())})
+		out, _ := json.Marshal(APIResult{Type: "error", Message: fmt.Sprintf("Error validating new config: %v", err.Error())})
 		fmt.Fprintf(w, string(out))
 		return
 	}
@@ -175,55 +185,64 @@ func httpTablesHandler(w http.ResponseWriter, r *http.Request, c Config) {
 	tables, err := getTables(c)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		out, _ := json.Marshal(APIResult{Success: false, Result: err.Error()})
+		out, _ := json.Marshal(APIResult{Type: "error", Message: err.Error()})
 		fmt.Fprintf(w, string(out))
 		return
 	}
-	out, err := json.Marshal(APIResult{Success: true, Result: tables})
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		out, _ := json.Marshal(APIResult{Success: false, Result: err.Error()})
-		fmt.Fprintf(w, string(out))
-		return
+	for _, table := range tables {
+		out, err := json.Marshal(APITablesResult{"table", table})
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			out, _ := json.Marshal(APIResult{Type: "error", Message: err.Error()})
+			fmt.Fprintf(w, string(out))
+			return
+		}
+		fmt.Fprintln(w, string(out))
 	}
-	fmt.Fprintln(w, string(out))
 }
 
 func httpListHandler(w http.ResponseWriter, r *http.Request, c Config) {
 	localBackups, err := ListLocalBackups(c)
 	if err != nil && !os.IsNotExist(err) {
 		w.WriteHeader(http.StatusInternalServerError)
-		out, _ := json.Marshal(APIResult{Success: false, Result: err.Error()})
+		out, _ := json.Marshal(APIResult{Type: "error", Message: err.Error()})
 		fmt.Fprintf(w, string(out))
 		return
 	}
-	fullList := APIBackupsList{Local: localBackups}
+	backups := []APIListResult{}
+	for _, backup := range localBackups {
+		backups = append(backups, APIListResult{"local", backup})
+	}
 	if c.General.RemoteStorage != "none" {
 		remoteBackups, err := getRemoteBackups(c)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			out, _ := json.Marshal(APIResult{Success: false, Result: err.Error()})
+			out, _ := json.Marshal(APIResult{Type: "error", Message: err.Error()})
 			fmt.Fprintf(w, string(out))
 			return
 		}
-		fullList.Remote = remoteBackups
+		for _, backup := range remoteBackups {
+			backups = append(backups, APIListResult{"remote", backup})
+		}
 	}
 
-	out, err := json.Marshal(APIResult{Success: false, Result: fullList})
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		out, _ := json.Marshal(APIResult{Success: false, Result: err.Error()})
-		fmt.Fprintf(w, string(out))
-		return
+	for _, backup := range backups {
+		out, err := json.Marshal(backup)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			out, _ := json.Marshal(APIResult{Type: "error", Message: err.Error()})
+			fmt.Fprintf(w, string(out))
+			return
+		}
+		fmt.Fprintln(w, string(out))
 	}
-	fmt.Fprintln(w, string(out))
 }
 
 func (api *APIServer) httpCreateHandler(w http.ResponseWriter, r *http.Request, c Config) {
 	if locked := api.lock.TryAcquire(1); !locked {
 		log.Println(ErrAPILocked)
 		w.WriteHeader(http.StatusServiceUnavailable)
-		out, _ := json.Marshal(APIResult{Success: false, Result: ErrAPILocked})
+		out, _ := json.Marshal(APIResult{Type: "error", Message: ErrAPILocked.Error()})
 		fmt.Fprintf(w, string(out))
 		return
 	}
@@ -248,16 +267,16 @@ func (api *APIServer) httpCreateHandler(w http.ResponseWriter, r *http.Request, 
 	if err != nil {
 		log.Printf("CreateBackup error: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
-		out, _ := json.Marshal(APIResult{Success: false, Result: err.Error()})
+		out, _ := json.Marshal(APIResult{Type: "error", Message: err.Error()})
 		fmt.Fprintf(w, string(out))
 		return
 	}
-	out, err := json.Marshal(APIResult{Success: true, Result: backup_name})
+	out, err := json.Marshal(APIResult{Type: "success", Message: backup_name})
 	if err != nil {
 		e := fmt.Sprintf("marshal error: %v", err)
 		log.Println(e)
 		w.WriteHeader(http.StatusInternalServerError)
-		out, _ := json.Marshal(APIResult{Success: false, Result: e})
+		out, _ := json.Marshal(APIResult{Type: "error", Message: e})
 		fmt.Fprintf(w, string(out))
 		return
 	}
@@ -269,7 +288,7 @@ func (api *APIServer) httpFreezeHandler(w http.ResponseWriter, r *http.Request, 
 	if locked := api.lock.TryAcquire(1); !locked {
 		log.Println(ErrAPILocked)
 		w.WriteHeader(http.StatusServiceUnavailable)
-		out, _ := json.Marshal(APIResult{Success: false, Result: ErrAPILocked})
+		out, _ := json.Marshal(APIResult{Type: "error", Message: ErrAPILocked.Error()})
 		fmt.Fprintf(w, string(out))
 		return
 	}
@@ -280,16 +299,16 @@ func (api *APIServer) httpFreezeHandler(w http.ResponseWriter, r *http.Request, 
 	if err := Freeze(c, tablePattern, useOldWay); err != nil {
 		log.Printf("Freeze error: = %+v\n", err)
 		w.WriteHeader(http.StatusInternalServerError)
-		out, _ := json.Marshal(APIResult{Success: false, Result: err.Error()})
+		out, _ := json.Marshal(APIResult{Type: "error", Message: err.Error()})
 		fmt.Fprintf(w, string(out))
 		return
 	}
-	out, err := json.Marshal(APIResult{Success: true})
+	out, err := json.Marshal(APIResult{Type: "success"})
 	if err != nil {
 		e := fmt.Sprintf("marshal error: %v", err)
 		log.Println(e)
 		w.WriteHeader(http.StatusInternalServerError)
-		out, _ := json.Marshal(APIResult{Success: false, Result: e})
+		out, _ := json.Marshal(APIResult{Type: "error", Message: e})
 		fmt.Fprintf(w, string(out))
 		return
 	}
@@ -300,7 +319,7 @@ func (api *APIServer) httpCleanHandler(w http.ResponseWriter, r *http.Request, c
 	if locked := api.lock.TryAcquire(1); !locked {
 		log.Println(ErrAPILocked)
 		w.WriteHeader(http.StatusServiceUnavailable)
-		out, _ := json.Marshal(APIResult{Success: false, Result: ErrAPILocked})
+		out, _ := json.Marshal(APIResult{Type: "error", Message: ErrAPILocked.Error()})
 		fmt.Fprintf(w, string(out))
 		return
 	}
@@ -309,16 +328,16 @@ func (api *APIServer) httpCleanHandler(w http.ResponseWriter, r *http.Request, c
 	if err := Clean(c); err != nil {
 		log.Printf("Clean error: = %+v\n", err)
 		w.WriteHeader(http.StatusInternalServerError)
-		out, _ := json.Marshal(APIResult{Success: false, Result: err.Error()})
+		out, _ := json.Marshal(APIResult{Type: "error", Message: err.Error()})
 		fmt.Fprintf(w, string(out))
 		return
 	}
-	out, err := json.Marshal(APIResult{Success: true})
+	out, err := json.Marshal(APIResult{Type: "success"})
 	if err != nil {
 		e := fmt.Sprintf("marshal error: %v", err)
 		log.Println(e)
 		w.WriteHeader(http.StatusInternalServerError)
-		out, _ := json.Marshal(APIResult{Success: false, Result: e})
+		out, _ := json.Marshal(APIResult{Type: "error", Message: e})
 		fmt.Fprintf(w, string(out))
 		return
 	}
@@ -336,16 +355,16 @@ func (api *APIServer) httpUploadHandler(w http.ResponseWriter, r *http.Request, 
 	if err := Upload(c, vars["name"], diffFrom); err != nil {
 		log.Printf("Upload error: %+v\n", err)
 		w.WriteHeader(http.StatusInternalServerError)
-		out, _ := json.Marshal(APIResult{Success: false, Result: err.Error()})
+		out, _ := json.Marshal(APIResult{Type: "error", Message: err.Error()})
 		fmt.Fprintf(w, string(out))
 		return
 	}
-	out, err := json.Marshal(APIResult{Success: true})
+	out, err := json.Marshal(APIResult{Type: "success"})
 	if err != nil {
 		e := fmt.Sprintf("marshal error: %v", err)
 		log.Println(e)
 		w.WriteHeader(http.StatusInternalServerError)
-		out, _ := json.Marshal(APIResult{Success: false, Result: e})
+		out, _ := json.Marshal(APIResult{Type: "error", Message: e})
 		fmt.Fprintf(w, string(out))
 		return
 	}
@@ -356,7 +375,7 @@ func (api *APIServer) httpRestoreHandler(w http.ResponseWriter, r *http.Request,
 	if locked := api.lock.TryAcquire(1); !locked {
 		log.Println(ErrAPILocked)
 		w.WriteHeader(http.StatusServiceUnavailable)
-		out, _ := json.Marshal(APIResult{Success: false, Result: ErrAPILocked})
+		out, _ := json.Marshal(APIResult{Type: "error", Message: ErrAPILocked.Error()})
 		fmt.Fprintf(w, string(out))
 		return
 	}
@@ -380,16 +399,16 @@ func (api *APIServer) httpRestoreHandler(w http.ResponseWriter, r *http.Request,
 	if err := Restore(c, vars["name"], tablePattern, schemaOnly, dataOnly); err != nil {
 		log.Printf("Download error: %+v\n", err)
 		w.WriteHeader(http.StatusInternalServerError)
-		out, _ := json.Marshal(APIResult{Success: false, Result: err.Error()})
+		out, _ := json.Marshal(APIResult{Type: "error", Message: err.Error()})
 		fmt.Fprintf(w, string(out))
 		return
 	}
-	out, err := json.Marshal(APIResult{Success: true})
+	out, err := json.Marshal(APIResult{Type: "success"})
 	if err != nil {
 		e := fmt.Sprintf("marshal error: %v", err)
 		log.Println(e)
 		w.WriteHeader(http.StatusInternalServerError)
-		out, _ := json.Marshal(APIResult{Success: false, Result: e})
+		out, _ := json.Marshal(APIResult{Type: "error", Message: e})
 		fmt.Fprintf(w, string(out))
 		return
 	}
@@ -401,16 +420,16 @@ func (api *APIServer) httpDownloadHandler(w http.ResponseWriter, r *http.Request
 	if err := Download(c, vars["name"]); err != nil {
 		log.Printf("Download error: %+v\n", err)
 		w.WriteHeader(http.StatusInternalServerError)
-		out, _ := json.Marshal(APIResult{Success: false, Result: err.Error()})
+		out, _ := json.Marshal(APIResult{Type: "error", Message: err.Error()})
 		fmt.Fprintf(w, string(out))
 		return
 	}
-	out, err := json.Marshal(APIResult{Success: true})
+	out, err := json.Marshal(APIResult{Type: "success"})
 	if err != nil {
 		e := fmt.Sprintf("marshal error: %v", err)
 		log.Println(e)
 		w.WriteHeader(http.StatusInternalServerError)
-		out, _ := json.Marshal(APIResult{Success: false, Result: e})
+		out, _ := json.Marshal(APIResult{Type: "error", Message: e})
 		fmt.Fprintf(w, string(out))
 		return
 	}
@@ -422,7 +441,7 @@ func (api *APIServer) httpDeleteHandler(w http.ResponseWriter, r *http.Request, 
 	if locked := api.lock.TryAcquire(1); !locked {
 		log.Println(ErrAPILocked)
 		w.WriteHeader(http.StatusServiceUnavailable)
-		out, _ := json.Marshal(APIResult{Success: false, Result: ErrAPILocked})
+		out, _ := json.Marshal(APIResult{Type: "error", Message: ErrAPILocked.Error()})
 		fmt.Fprintf(w, string(out))
 		return
 	}
@@ -434,7 +453,7 @@ func (api *APIServer) httpDeleteHandler(w http.ResponseWriter, r *http.Request, 
 		if err := RemoveBackupLocal(c, vars["name"]); err != nil {
 			log.Printf("RemoveBackupLocal error: %+v\n", err)
 			w.WriteHeader(http.StatusInternalServerError)
-			out, _ := json.Marshal(APIResult{Success: false, Result: err.Error()})
+			out, _ := json.Marshal(APIResult{Type: "error", Message: err.Error()})
 			fmt.Fprintf(w, string(out))
 			return
 		}
@@ -442,22 +461,22 @@ func (api *APIServer) httpDeleteHandler(w http.ResponseWriter, r *http.Request, 
 		if err := RemoveBackupRemote(c, vars["name"]); err != nil {
 			log.Printf("RemoveBackupRemote error: %+v\n", err)
 			w.WriteHeader(http.StatusInternalServerError)
-			out, _ := json.Marshal(APIResult{Success: false, Result: err.Error()})
+			out, _ := json.Marshal(APIResult{Type: "error", Message: err.Error()})
 			fmt.Fprintf(w, string(out))
 			return
 		}
 	default:
 		w.WriteHeader(http.StatusInternalServerError)
-		out, _ := json.Marshal(APIResult{Success: false, Result: "Backup location must be 'local' or 'remote'."})
+		out, _ := json.Marshal(APIResult{Type: "error", Message: "Backup location must be 'local' or 'remote'."})
 		fmt.Fprintf(w, string(out))
 		return
 	}
-	out, err := json.Marshal(APIResult{Success: true})
+	out, err := json.Marshal(APIResult{Type: "success"})
 	if err != nil {
 		e := fmt.Sprintf("marshal error: %v", err)
 		log.Println(e)
 		w.WriteHeader(http.StatusInternalServerError)
-		out, _ := json.Marshal(APIResult{Success: false, Result: e})
+		out, _ := json.Marshal(APIResult{Type: "error", Message: e})
 		fmt.Fprintf(w, string(out))
 		return
 	}
