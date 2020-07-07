@@ -3,6 +3,7 @@ package chbackup
 import (
 	"fmt"
 	"io/ioutil"
+	"log"
 	"os"
 	"time"
 
@@ -89,6 +90,7 @@ func LoadConfig(configLocation string) (*Config, error) {
 	config := DefaultConfig()
 	configYaml, err := ioutil.ReadFile(configLocation)
 	if os.IsNotExist(err) {
+		log.Printf("No config file at %s, using default configuration.", configLocation)
 		err := envconfig.Process("", config)
 		return config, err
 	}
@@ -101,6 +103,7 @@ func LoadConfig(configLocation string) (*Config, error) {
 	if err := envconfig.Process("", config); err != nil {
 		return nil, err
 	}
+	log.Printf("Using config file at %s.", configLocation)
 	return config, validateConfig(config)
 }
 

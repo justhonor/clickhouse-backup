@@ -237,6 +237,6 @@ func getConfig(ctx *cli.Context) *chbackup.Config {
 	if err != nil {
 		log.Fatal(err)
 	}
-
+	log.Printf("Using config: %+v", config)
 	return config
 }
