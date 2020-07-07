@@ -75,25 +75,25 @@ func (api *APIServer) setupAPIServer(config Config) *http.Server {
 	}).Methods("GET")
 	r.HandleFunc("/backup/create", func(w http.ResponseWriter, r *http.Request) {
 		api.httpCreateHandler(w, r, config)
-	}).Methods("POST")
+	}).Methods("POST", "GET")
 	r.HandleFunc("/backup/clean", func(w http.ResponseWriter, r *http.Request) {
 		api.httpCleanHandler(w, r, config)
-	}).Methods("POST")
+	}).Methods("POST", "GET")
 	r.HandleFunc("/backup/freeze", func(w http.ResponseWriter, r *http.Request) {
 		api.httpFreezeHandler(w, r, config)
-	}).Methods("POST")
+	}).Methods("POST", "GET")
 	r.HandleFunc("/backup/upload/{name}", func(w http.ResponseWriter, r *http.Request) {
 		api.httpUploadHandler(w, r, config)
-	}).Methods("POST")
+	}).Methods("POST", "GET")
 	r.HandleFunc("/backup/download/{name}", func(w http.ResponseWriter, r *http.Request) {
 		api.httpDownloadHandler(w, r, config)
-	}).Methods("POST")
+	}).Methods("POST", "GET")
 	r.HandleFunc("/backup/restore/{name}", func(w http.ResponseWriter, r *http.Request) {
 		api.httpRestoreHandler(w, r, config)
-	}).Methods("POST")
+	}).Methods("POST", "GET")
 	r.HandleFunc("/backup/delete/{where}/{name}", func(w http.ResponseWriter, r *http.Request) {
 		api.httpDeleteHandler(w, r, config)
-	}).Methods("POST")
+	}).Methods("POST", "GET")
 	r.HandleFunc("/backup/config/default", func(w http.ResponseWriter, r *http.Request) {
 		httpConfigDefaultHandler(w, r, config)
 	}).Methods("GET")
@@ -102,7 +102,7 @@ func (api *APIServer) setupAPIServer(config Config) *http.Server {
 	}).Methods("GET")
 	r.HandleFunc("/backup/config", func(w http.ResponseWriter, r *http.Request) {
 		api.httpConfigUpdateHandler(w, r, config)
-	}).Methods("POST")
+	}).Methods("POST", "GET")
 
 	srv := &http.Server{
 		Addr:    config.API.ListenAddr,
