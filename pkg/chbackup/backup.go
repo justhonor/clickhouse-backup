@@ -327,7 +327,7 @@ func PrintRemoteBackups(config Config, format string) error {
 }
 
 // Freeze - freeze tables by tablePattern
-func Freeze(config Config, tablePattern string, useOldWay bool) error {
+func Freeze(config Config, tablePattern string) error {
 	ch := &ClickHouse{
 		Config: &config.ClickHouse,
 	}
@@ -364,7 +364,7 @@ func Freeze(config Config, tablePattern string, useOldWay bool) error {
 			log.Printf("Skip `%s`.`%s`", table.Database, table.Name)
 			continue
 		}
-		if err := ch.FreezeTable(table, useOldWay); err != nil {
+		if err := ch.FreezeTable(table); err != nil {
 			return err
 		}
 	}
@@ -378,7 +378,7 @@ func NewBackupName() string {
 
 // CreateBackup - create new backup of all tables matched by tablePattern
 // If backupName is empty string will use default backup name
-func CreateBackup(config Config, backupName, tablePattern string, useOldWay bool) (string, error) {
+func CreateBackup(config Config, backupName, tablePattern string) (string, error) {
 	if backupName == "" {
 		backupName = NewBackupName()
 	}
@@ -394,7 +394,7 @@ func CreateBackup(config Config, backupName, tablePattern string, useOldWay bool
 		return backupName, fmt.Errorf("can't create backup with %v", err)
 	}
 	log.Printf("Create backup '%s'", backupName)
-	if err := Freeze(config, tablePattern, useOldWay); err != nil {
+	if err := Freeze(config, tablePattern); err != nil {
 		return backupName, err
 	}
 	log.Println("Copy metadata")

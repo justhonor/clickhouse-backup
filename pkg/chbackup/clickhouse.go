@@ -175,12 +175,12 @@ func (ch *ClickHouse) FreezeTableOldWay(table Table) error {
 
 // FreezeTable - freeze all partitions for table
 // This way available for ClickHouse sience v19.1
-func (ch *ClickHouse) FreezeTable(table Table, useOldWay bool) error {
+func (ch *ClickHouse) FreezeTable(table Table) error {
 	version, err := ch.GetVersion()
 	if err != nil {
 		return err
 	}
-	if version < 19001005 || useOldWay {
+	if version < 19001005 {
 		return ch.FreezeTableOldWay(table)
 	}
 	log.Printf("Freeze `%s`.`%s`", table.Database, table.Name)

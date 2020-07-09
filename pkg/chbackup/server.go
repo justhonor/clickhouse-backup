@@ -295,8 +295,7 @@ func (api *APIServer) httpFreezeHandler(w http.ResponseWriter, r *http.Request, 
 	defer api.lock.Release(1)
 
 	tablePattern := ""
-	useOldWay := false
-	if err := Freeze(c, tablePattern, useOldWay); err != nil {
+	if err := Freeze(c, tablePattern); err != nil {
 		log.Printf("Freeze error: = %+v\n", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		out, _ := json.Marshal(APIResult{Type: "error", Message: err.Error()})
