@@ -60,8 +60,8 @@ type S3Config struct {
 
 // COSConfig - cos settings section
 type COSConfig struct {
-	RowUrl            string `yaml:"url" envconfig:"COS_URL"`
-	Timeout           int    `yaml:"timeout" envconfig:"COS_TIMEOUT"`
+	RowURL            string `yaml:"url" envconfig:"COS_URL"`
+	Timeout           string `yaml:"timeout" envconfig:"COS_TIMEOUT"`
 	SecretID          string `yaml:"secret_id" envconfig:"COS_SECRET_ID"`
 	SecretKey         string `yaml:"secret_key" envconfig:"COS_SECRET_KEY"`
 	Path              string `yaml:"path" envconfig:"COS_PATH"`
@@ -72,13 +72,14 @@ type COSConfig struct {
 
 // ClickHouseConfig - clickhouse settings section
 type ClickHouseConfig struct {
-	Username   string   `yaml:"username" envconfig:"CLICKHOUSE_USERNAME"`
-	Password   string   `yaml:"password" envconfig:"CLICKHOUSE_PASSWORD"`
-	Host       string   `yaml:"host" envconfig:"CLICKHOUSE_HOST"`
-	Port       uint     `yaml:"port" envconfig:"CLICKHOUSE_PORT"`
-	DataPath   string   `yaml:"data_path" envconfig:"CLICKHOUSE_DATA_PATH"`
-	SkipTables []string `yaml:"skip_tables" envconfig:"CLICKHOUSE_SKIP_TABLES"`
-	Timeout    string   `yaml:"timeout" envconfig:"CLICKHOUSE_TIMEOUT"`
+	Username     string   `yaml:"username" envconfig:"CLICKHOUSE_USERNAME"`
+	Password     string   `yaml:"password" envconfig:"CLICKHOUSE_PASSWORD"`
+	Host         string   `yaml:"host" envconfig:"CLICKHOUSE_HOST"`
+	Port         uint     `yaml:"port" envconfig:"CLICKHOUSE_PORT"`
+	DataPath     string   `yaml:"data_path" envconfig:"CLICKHOUSE_DATA_PATH"`
+	SkipTables   []string `yaml:"skip_tables" envconfig:"CLICKHOUSE_SKIP_TABLES"`
+	Timeout      string   `yaml:"timeout" envconfig:"CLICKHOUSE_TIMEOUT"`
+	FreezeByPart bool     `yaml:"freeze_by_part" envconfig:"CLICKHOUSE_FREEZE_BY_PART"`
 }
 
 type APIConfig struct {
@@ -115,6 +116,9 @@ func validateConfig(config *Config) error {
 		return err
 	}
 	if _, err := time.ParseDuration(config.ClickHouse.Timeout); err != nil {
+		return err
+	}
+	if _, err := time.ParseDuration(config.COS.Timeout); err != nil {
 		return err
 	}
 	return nil
@@ -158,8 +162,8 @@ func DefaultConfig() *Config {
 			CompressionFormat: "gzip",
 		},
 		COS: COSConfig{
-			RowUrl:            "",
-			Timeout:           100,
+			RowURL:            "",
+			Timeout:           "2m",
 			SecretID:          "",
 			SecretKey:         "",
 			Path:              "",
