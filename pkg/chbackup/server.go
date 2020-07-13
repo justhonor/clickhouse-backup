@@ -249,21 +249,17 @@ func (api *APIServer) httpCreateHandler(w http.ResponseWriter, r *http.Request, 
 	defer api.lock.Release(1)
 
 	tablePattern := ""
-	freezeOneByOne := false
 	desiredName := ""
 
 	query := r.URL.Query()
 	if tp, exist := query["table"]; exist {
 		tablePattern = tp[0]
 	}
-	if _, exist := query["freeze_one_by_one"]; exist {
-		freezeOneByOne = true
-	}
 	if dn, exist := query["name"]; exist {
 		desiredName = dn[0]
 	}
 
-	backup_name, err := CreateBackup(c, desiredName, tablePattern, freezeOneByOne)
+	backup_name, err := CreateBackup(c, desiredName, tablePattern)
 	if err != nil {
 		log.Printf("CreateBackup error: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
