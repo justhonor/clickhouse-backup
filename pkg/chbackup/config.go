@@ -104,7 +104,6 @@ func LoadConfig(configLocation string) (*Config, error) {
 	if err := envconfig.Process("", config); err != nil {
 		return nil, err
 	}
-	log.Printf("Using config file at %s.", configLocation)
 	return config, validateConfig(config)
 }
 
