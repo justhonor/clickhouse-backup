@@ -7,9 +7,13 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/http/pprof"
 	"os"
+	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/sync/semaphore"
 	yaml "gopkg.in/yaml.v2"
 )
@@ -19,6 +23,7 @@ type APIServer struct {
 	lock    *semaphore.Weighted
 	server  *http.Server
 	restart chan bool
+	metrics Metrics
 }
 
 type APIResult struct {
@@ -48,6 +53,8 @@ var (
 // Server - expose CLI commands as REST API
 func Server(config Config) error {
 	api := APIServer{config: config, lock: semaphore.NewWeighted(1), restart: make(chan bool)}
+	api.metrics = setupMetrics()
+
 	for {
 		api.server = api.setupAPIServer(api.config)
 		go func() {
@@ -103,6 +110,8 @@ func (api *APIServer) setupAPIServer(config Config) *http.Server {
 	r.HandleFunc("/backup/config", func(w http.ResponseWriter, r *http.Request) {
 		api.httpConfigUpdateHandler(w, r, config)
 	}).Methods("POST", "GET")
+
+	registerMetricsHandlers(r, config.API.EnableMetrics, config.API.EnablePprof)
 
 	srv := &http.Server{
 		Addr:    config.API.ListenAddr,
@@ -247,6 +256,8 @@ func (api *APIServer) httpCreateHandler(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	defer api.lock.Release(1)
+	start := time.Now()
+	defer api.metrics.BackupDuration.Set(float64(time.Now().Sub(start).Nanoseconds()))
 
 	tablePattern := ""
 	desiredName := ""
@@ -261,6 +272,8 @@ func (api *APIServer) httpCreateHandler(w http.ResponseWriter, r *http.Request, 
 
 	backup_name, err := CreateBackup(c, desiredName, tablePattern)
 	if err != nil {
+		api.metrics.FailedBackups.Inc()
+		api.metrics.BackupSuccess.Set(0)
 		log.Printf("CreateBackup error: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		out, _ := json.Marshal(APIResult{Type: "error", Message: err.Error()})
@@ -269,6 +282,8 @@ func (api *APIServer) httpCreateHandler(w http.ResponseWriter, r *http.Request, 
 	}
 	out, err := json.Marshal(APIResult{Type: "success", Message: backup_name})
 	if err != nil {
+		api.metrics.FailedBackups.Inc()
+		api.metrics.BackupSuccess.Set(0)
 		e := fmt.Sprintf("marshal error: %v", err)
 		log.Println(e)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -276,6 +291,8 @@ func (api *APIServer) httpCreateHandler(w http.ResponseWriter, r *http.Request, 
 		fmt.Fprintf(w, string(out))
 		return
 	}
+	api.metrics.SuccessfulBackups.Inc()
+	api.metrics.BackupSuccess.Set(1)
 	fmt.Fprintf(w, string(out))
 	return
 }
@@ -483,3 +500,62 @@ const rootHtml = `<html><body>
 <h1>clickhouse-backup API</h1>
 See: <a href="https://github.com/Altinity/clickhouse-backup#api-configuration">https://github.com/Altinity/clickhouse-backup#api-configuration</a>
 </body></html>`
+
+func registerMetricsHandlers(r *mux.Router, enablemetrics bool, enablepprof bool) {
+	r.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintln(w, "OK")
+	})
+	if enablemetrics {
+		r.Handle("/metrics", promhttp.Handler())
+	}
+	if enablepprof {
+		r.HandleFunc("/debug/pprof/", pprof.Index)
+		r.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+		r.HandleFunc("/debug/pprof/profile", pprof.Profile)
+		r.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+		r.HandleFunc("/debug/pprof/trace", pprof.Trace)
+		r.Handle("/debug/pprof/block", pprof.Handler("block"))
+		r.Handle("/debug/pprof/goroutine", pprof.Handler("goroutine"))
+		r.Handle("/debug/pprof/heap", pprof.Handler("heap"))
+		r.Handle("/debug/pprof/threadcreate", pprof.Handler("threadcreate"))
+	}
+}
+
+type Metrics struct {
+	BackupSuccess     prometheus.Gauge
+	BackupDuration    prometheus.Gauge
+	SuccessfulBackups prometheus.Counter
+	FailedBackups     prometheus.Counter
+}
+
+func setupMetrics() Metrics {
+	m := Metrics{}
+	m.BackupDuration = prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: "clickhouse_backup",
+		Name:      "last_backup_duration",
+		Help:      "Backup duration in nanoseconds.",
+	})
+	m.BackupSuccess = prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: "clickhouse_backup",
+		Name:      "last_backup_success",
+		Help:      "Backup success boolean.",
+	})
+	m.SuccessfulBackups = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "clickhouse_backup",
+		Name:      "successful_backups",
+		Help:      "Number of Successful Backups.",
+	})
+	m.FailedBackups = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "clickhouse_backup",
+		Name:      "failed_backups",
+		Help:      "Number of Failed Backups.",
+	})
+	prometheus.MustRegister(
+		m.BackupDuration,
+		m.BackupSuccess,
+		m.SuccessfulBackups,
+		m.FailedBackups,
+	)
+	m.BackupSuccess.Set(2) // 0=failed, 1=success, 2=unknown
+	return m
+}

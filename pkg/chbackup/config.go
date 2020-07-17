@@ -83,7 +83,9 @@ type ClickHouseConfig struct {
 }
 
 type APIConfig struct {
-	ListenAddr string `yaml:"listen_addr" envconfig:"API_LISTEN_ADDR"`
+	ListenAddr    string `yaml:"listen_addr" envconfig:"API_LISTEN_ADDR"`
+	EnableMetrics bool   `yaml:"enable_metrics" envconfig:"ENABLE_METRICS"`
+	EnablePprof   bool   `yaml:"enable_pprof" envconfig:"ENABLE_PPROF"`
 }
 
 // LoadConfig - load config from file
