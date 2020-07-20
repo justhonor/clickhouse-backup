@@ -6,7 +6,7 @@ require (
 	github.com/AlexAkulov/clickhouse-backup v0.5.1
 	github.com/ClickHouse/clickhouse-go v1.3.12
 	github.com/andybalholm/brotli v1.0.0 // indirect
-	github.com/aws/aws-sdk-go v1.30.29
+	github.com/aws/aws-sdk-go v1.33.7
 	github.com/cpuguy83/go-md2man/v2 v2.0.0 // indirect
 	github.com/fatih/color v1.9.0 // indirect
 	github.com/frankban/quicktest v1.10.0 // indirect
