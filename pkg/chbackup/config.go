@@ -56,6 +56,7 @@ type S3Config struct {
 	SSE                     string `yaml:"sse" envconfig:"S3_SSE"`
 	DisableCertVerification bool   `yaml:"disable_cert_verification" envconfig:"S3_DISABLE_CERT_VERIFICATION"`
 	PathHostnameInclude     bool   `yaml:"path_hostname_include" envconfig:"S3_PATH_HOSTNAME_INCLUDE"`
+	Timeout                 int64  `yaml:"timeout" envconfig:"S3_TIMEOUT"`
 }
 
 // COSConfig - cos settings section
@@ -157,6 +158,7 @@ func DefaultConfig() *Config {
 			CompressionLevel:        1,
 			CompressionFormat:       "gzip",
 			DisableCertVerification: false,
+			Timeout:                 5000,
 		},
 		GCS: GCSConfig{
 			CompressionLevel:  1,

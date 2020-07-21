@@ -1,6 +1,7 @@
 package chbackup
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"io"
@@ -157,7 +158,21 @@ func (s *S3) remotePager(s3Path string, delim bool, pager func(page *s3.ListObje
 		pager(page)
 		return true
 	}
-	return s3.New(s.session).ListObjectsV2Pages(params, wrapper)
+	// return s3.New(s.session).ListObjectsV2Pages(params, wrapper)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.Config.Timeout)*time.Millisecond)
+	defer cancel()
+	c := make(chan error, 1)
+	go func() { c <- s3.New(s.session).ListObjectsV2PagesWithContext(ctx, params, wrapper) }()
+	select {
+	case <-ctx.Done():
+		<-c
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return fmt.Errorf("S3 request timeout after %dmsec", s.Config.Timeout)
+		}
+		return ctx.Err()
+	case err := <-c:
+		return err
+	}
 }
 
 type s3File struct {
