@@ -257,7 +257,9 @@ func (api *APIServer) httpCreateHandler(w http.ResponseWriter, r *http.Request, 
 	}
 	defer api.lock.Release(1)
 	start := time.Now()
-	defer api.metrics.BackupDuration.Set(float64(time.Now().Sub(start).Nanoseconds()))
+	api.metrics.LastBackupStart.Set(float64(start.Unix()))
+	defer api.metrics.LastBackupDuration.Set(float64(time.Now().Sub(start).Nanoseconds()))
+	defer api.metrics.LastBackupEnd.Set(float64(time.Now().Unix()))
 
 	tablePattern := ""
 	desiredName := ""
@@ -273,7 +275,7 @@ func (api *APIServer) httpCreateHandler(w http.ResponseWriter, r *http.Request, 
 	backup_name, err := CreateBackup(c, desiredName, tablePattern)
 	if err != nil {
 		api.metrics.FailedBackups.Inc()
-		api.metrics.BackupSuccess.Set(0)
+		api.metrics.LastBackupSuccess.Set(0)
 		log.Printf("CreateBackup error: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		out, _ := json.Marshal(APIResult{Type: "error", Message: err.Error()})
@@ -283,7 +285,7 @@ func (api *APIServer) httpCreateHandler(w http.ResponseWriter, r *http.Request, 
 	out, err := json.Marshal(APIResult{Type: "success", Message: backup_name})
 	if err != nil {
 		api.metrics.FailedBackups.Inc()
-		api.metrics.BackupSuccess.Set(0)
+		api.metrics.LastBackupSuccess.Set(0)
 		e := fmt.Sprintf("marshal error: %v", err)
 		log.Println(e)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -292,7 +294,7 @@ func (api *APIServer) httpCreateHandler(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	api.metrics.SuccessfulBackups.Inc()
-	api.metrics.BackupSuccess.Set(1)
+	api.metrics.LastBackupSuccess.Set(1)
 	fmt.Fprintf(w, string(out))
 	return
 }
@@ -522,23 +524,35 @@ func registerMetricsHandlers(r *mux.Router, enablemetrics bool, enablepprof bool
 }
 
 type Metrics struct {
-	BackupSuccess     prometheus.Gauge
-	BackupDuration    prometheus.Gauge
-	SuccessfulBackups prometheus.Counter
-	FailedBackups     prometheus.Counter
+	LastBackupSuccess  prometheus.Gauge
+	LastBackupStart    prometheus.Gauge
+	LastBackupEnd      prometheus.Gauge
+	LastBackupDuration prometheus.Gauge
+	SuccessfulBackups  prometheus.Counter
+	FailedBackups      prometheus.Counter
 }
 
 func setupMetrics() Metrics {
 	m := Metrics{}
-	m.BackupDuration = prometheus.NewGauge(prometheus.GaugeOpts{
+	m.LastBackupDuration = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: "clickhouse_backup",
 		Name:      "last_backup_duration",
 		Help:      "Backup duration in nanoseconds.",
 	})
-	m.BackupSuccess = prometheus.NewGauge(prometheus.GaugeOpts{
+	m.LastBackupSuccess = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: "clickhouse_backup",
 		Name:      "last_backup_success",
-		Help:      "Backup success boolean.",
+		Help:      "Last backup success boolean: 0=failed, 1=success, 2=unknown.",
+	})
+	m.LastBackupStart = prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: "clickhouse_backup",
+		Name:      "last_backup_start",
+		Help:      "Last backup start timestamp.",
+	})
+	m.LastBackupEnd = prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: "clickhouse_backup",
+		Name:      "last_backup_end",
+		Help:      "Last backup end timestamp.",
 	})
 	m.SuccessfulBackups = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "clickhouse_backup",
@@ -551,11 +565,13 @@ func setupMetrics() Metrics {
 		Help:      "Number of Failed Backups.",
 	})
 	prometheus.MustRegister(
-		m.BackupDuration,
-		m.BackupSuccess,
+		m.LastBackupDuration,
+		m.LastBackupStart,
+		m.LastBackupEnd,
+		m.LastBackupSuccess,
 		m.SuccessfulBackups,
 		m.FailedBackups,
 	)
-	m.BackupSuccess.Set(2) // 0=failed, 1=success, 2=unknown
+	m.LastBackupSuccess.Set(2) // 0=failed, 1=success, 2=unknown
 	return m
 }
