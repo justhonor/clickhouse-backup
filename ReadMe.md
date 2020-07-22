@@ -190,7 +190,9 @@ Create schema and restore data from backup: `curl -s localhost:7171/backup/resto
 
 > **POST /backup/delete**
 
-Delete specific backup: `curl -s localhost:7171/backup/delete/<BACKUP_NAME> -X POST | jq .`
+Delete specific remote backup: `curl -s localhost:7171/backup/delete/remote/<BACKUP_NAME> -X POST | jq .`
+
+Delete specific local backup: `curl -s localhost:7171/backup/delete/local/<BACKUP_NAME> -X POST | jq .`
 
 > **POST /backup/freeze**
 
