@@ -22,14 +22,12 @@ import (
 
 // S3 - presents methods for manipulate data on s3
 type S3 struct {
-	session *session.Session
-	Config  *S3Config
+	Config    *S3Config
+	AWSConfig *aws.Config
 }
 
 // Connect - connect to s3
 func (s *S3) Connect() error {
-	var err error
-
 	awsDefaults := defaults.Get()
 	defaultCredProviders := defaults.CredProviders(awsDefaults.Config, awsDefaults.Handlers)
 
@@ -43,24 +41,21 @@ func (s *S3) Connect() error {
 	customCredProviders := append([]credentials.Provider{staticCreds}, defaultCredProviders...)
 	creds := credentials.NewChainCredentials(customCredProviders)
 
-	var awsConfig = &aws.Config{
+	s.AWSConfig = &aws.Config{
 		Credentials:      creds,
 		Region:           aws.String(s.Config.Region),
 		Endpoint:         aws.String(s.Config.Endpoint),
 		DisableSSL:       aws.Bool(s.Config.DisableSSL),
 		S3ForcePathStyle: aws.Bool(s.Config.ForcePathStyle),
 		MaxRetries:       aws.Int(30),
+		LogLevel:         aws.LogLevel(aws.LogDebug), // TODO
 	}
 
 	if s.Config.DisableCertVerification {
 		tr := &http.Transport{
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 		}
-		awsConfig.HTTPClient = &http.Client{Transport: tr}
-	}
-
-	if s.session, err = session.NewSession(awsConfig); err != nil {
-		return err
+		s.AWSConfig.HTTPClient = &http.Client{Transport: tr}
 	}
 	return nil
 }
@@ -70,7 +65,11 @@ func (s *S3) Kind() string {
 }
 
 func (s *S3) GetFileReader(key string) (io.ReadCloser, error) {
-	svc := s3.New(s.session)
+	session, err := session.NewSession(s.AWSConfig)
+	if err != nil {
+		return nil, err
+	}
+	svc := s3.New(session)
 	req, resp := svc.GetObjectRequest(&s3.GetObjectInput{
 		Bucket: aws.String(s.Config.Bucket),
 		Key:    aws.String(key),
@@ -83,7 +82,11 @@ func (s *S3) GetFileReader(key string) (io.ReadCloser, error) {
 }
 
 func (s *S3) PutFile(key string, r io.ReadCloser) error {
-	uploader := s3manager.NewUploader(s.session)
+	session, err := session.NewSession(s.AWSConfig)
+	if err != nil {
+		return err
+	}
+	uploader := s3manager.NewUploader(session)
 	uploader.Concurrency = 10
 	uploader.PartSize = s.Config.PartSize
 	var sse *string
@@ -96,7 +99,7 @@ func (s *S3) PutFile(key string, r io.ReadCloser) error {
 		}
 	}
 
-	_, err := uploader.Upload(&s3manager.UploadInput{
+	_, err = uploader.Upload(&s3manager.UploadInput{
 		ACL:                  aws.String(s.Config.ACL),
 		Bucket:               aws.String(s.Config.Bucket),
 		Key:                  aws.String(key),
@@ -107,12 +110,15 @@ func (s *S3) PutFile(key string, r io.ReadCloser) error {
 }
 
 func (s *S3) DeleteFile(key string) error {
+	session, err := session.NewSession(s.AWSConfig)
+	if err != nil {
+		return err
+	}
 	params := &s3.DeleteObjectInput{
 		Bucket: aws.String(s.Config.Bucket),
 		Key:    aws.String(key),
 	}
-
-	_, err := s3.New(s.session).DeleteObject(params)
+	_, err = s3.New(session).DeleteObject(params)
 	if err != nil {
 		return errors.Wrapf(err, "DeleteFile, deleting object %+v", params)
 	}
@@ -120,7 +126,11 @@ func (s *S3) DeleteFile(key string) error {
 }
 
 func (s *S3) GetFile(key string) (RemoteFile, error) {
-	svc := s3.New(s.session)
+	session, err := session.NewSession(s.AWSConfig)
+	if err != nil {
+		return nil, err
+	}
+	svc := s3.New(session)
 	head, err := svc.HeadObject(&s3.HeadObjectInput{
 		Bucket: aws.String(s.Config.Bucket),
 		Key:    aws.String(key),
@@ -158,11 +168,14 @@ func (s *S3) remotePager(s3Path string, delim bool, pager func(page *s3.ListObje
 		pager(page)
 		return true
 	}
-	// return s3.New(s.session).ListObjectsV2Pages(params, wrapper)
+	session, err := session.NewSession(s.AWSConfig)
+	if err != nil {
+		return err
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.Config.Timeout)*time.Millisecond)
 	defer cancel()
 	c := make(chan error, 1)
-	go func() { c <- s3.New(s.session).ListObjectsV2PagesWithContext(ctx, params, wrapper) }()
+	go func() { c <- s3.New(session).ListObjectsV2PagesWithContext(ctx, params, wrapper) }()
 	select {
 	case <-ctx.Done():
 		<-c
